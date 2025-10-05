@@ -20,12 +20,15 @@
     },
     "peacock.remoteColor": "#f9e64f",
     "files.exclude": {
-        "**/.venv": true
+        "**/.venv": true,
+        "**/params": true
     },
     "files.watcherExclude": {
-        "**/.venv/**": true
+        "**/.venv/**": true,
+        "**/params/**": true
     },
     "search.exclude": {
-        "**/.venv": true
+        "**/.venv": true,
+        "**/params": true
     }
 }
