@@ -6,7 +6,7 @@ Last updated: 2026-05-06
 
 Official Mosaic cloned locally. Upstream remote is `upstream`. Writable fork remote `origin` is `git@github.com:a-green-hand-jack/mosaic.git`.
 
-Quest clone exists at `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code` on commit `2ff005a`.
+Quest clone exists at `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code`. Verify the exact synchronized commit with `git rev-parse --short HEAD` before running jobs.
 
 Quest environment uses uv:
 
