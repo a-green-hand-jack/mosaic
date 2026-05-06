@@ -22,7 +22,11 @@ export PYTHONNOUSERSITE=1
 cd /projects/p32572/Jieke/Projects/SCH-BinderDesign/code
 
 echo "node=$(hostname)"
-echo "commit=$(git rev-parse --short HEAD)"
+if command -v git >/dev/null 2>&1; then
+  echo "commit=$(git rev-parse --short HEAD)"
+else
+  echo "commit=unavailable-git-not-on-path"
+fi
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
 
 /home/zpt6685/.local/bin/uv run python - <<'PY'
