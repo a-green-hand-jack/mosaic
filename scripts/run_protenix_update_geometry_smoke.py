@@ -82,6 +82,10 @@ def build_losses(args: argparse.Namespace) -> dict[str, LossTerm]:
         binder_length=args.binder_length,
         chains=[TargetChain(sequence=target_sequence, use_msa=False)],
     )
+    features = jax.tree.map(
+        lambda value: jnp.asarray(value) if isinstance(value, np.ndarray) else value,
+        features,
+    )
     protenix_contact = model.build_loss(
         loss=sp.BinderTargetContact(contact_distance=args.contact_distance),
         features=features,
