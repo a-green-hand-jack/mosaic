@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import itertools
 import json
 import math
 import subprocess
@@ -138,6 +139,9 @@ def choose_raw_direction(
     method: MethodSpec,
     grads: dict[str, jax.Array],
     weights: dict[str, float],
+    *,
+    x: jax.Array | None = None,
+    step_size: float | None = None,
 ) -> jax.Array:
     ordered = list(grads)
 
@@ -154,21 +158,68 @@ def choose_raw_direction(
         return raw
 
     if method.name == "soft_cone_correction":
-        target_norm = jnp.sqrt(jnp.sum(raw * raw)) + 1e-8
-        corrected = raw
-        for _ in range(8):
-            for name in ordered:
-                g = grads[name]
-                harm = jnp.sum(g * corrected)
-                corrected = jnp.where(
-                    harm > 0,
-                    corrected - 1.05 * harm * g / (jnp.sum(g * g) + 1e-8),
-                    corrected,
-                )
-        corrected_norm = jnp.sqrt(jnp.sum(corrected * corrected)) + 1e-8
-        return corrected * (target_norm / corrected_norm)
+        if x is None or step_size is None:
+            raise ValueError("soft_cone_correction needs x and step_size")
+        return choose_soft_cone_direction(
+            grads=grads,
+            weights=weights,
+            x=x,
+            step_size=step_size,
+        )
 
     raise ValueError(method.name)
+
+
+def simplex_weight_grid(n: int, denominator: int = 4):
+    for counts in itertools.product(range(denominator + 1), repeat=n):
+        if sum(counts) == denominator:
+            yield np.asarray(counts, dtype=np.float32) / float(denominator)
+
+
+def choose_soft_cone_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    step_size: float,
+) -> jax.Array:
+    names = list(grads)
+    normed_grads = {name: normalized(grads[name]) for name in names}
+    candidates = []
+
+    # Include normalized weighted and single-oracle directions.
+    candidates.append(-sum(weights[name] * normed_grads[name] for name in names))
+    candidates.extend([-normed_grads[name] for name in names])
+
+    # Search the convex cone spanned by negative normalized gradients. The score
+    # is computed on the actual projected simplex update, not on the raw vector.
+    for alpha in simplex_weight_grid(len(names), denominator=4):
+        if np.count_nonzero(alpha) == 0:
+            continue
+        raw = -sum(float(a) * normed_grads[name] for a, name in zip(alpha, names))
+        candidates.append(raw)
+
+    best_score = None
+    best_raw = candidates[0]
+    for raw in candidates:
+        _, actual_update = projected_update(x, raw, step_size)
+        derivatives = [flatten_dot(grads[name], actual_update) for name in names]
+        harm_count = sum(value > 0 for value in derivatives)
+        worst = max(derivatives)
+        mean_derivative = float(np.mean(derivatives))
+        step_norm_value = grad_norm(actual_update)
+        # Primary objective: avoid harming oracles. Secondary: reduce the worst
+        # harm. Tertiary: keep meaningful average descent and avoid zero steps.
+        score = (
+            harm_count,
+            worst,
+            mean_derivative,
+            -step_norm_value,
+        )
+        if best_score is None or score < best_score:
+            best_score = score
+            best_raw = raw
+    return best_raw
 
 
 def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
@@ -214,7 +265,13 @@ def run_single_method(
             }
             grads[name] = grad
 
-        raw_direction = choose_raw_direction(method, grads, weights)
+        raw_direction = choose_raw_direction(
+            method,
+            grads,
+            weights,
+            x=x,
+            step_size=step_size,
+        )
         x_new, actual_update = projected_update(x, raw_direction, step_size)
 
         directional = {
