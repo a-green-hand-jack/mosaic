@@ -29,6 +29,58 @@ def try_run_command(args: list[str], default: str | None = None) -> str | None:
         return default
 
 
+def resolve_git_metadata_from_files(repo: Path) -> dict[str, str | None]:
+    git_path = repo / ".git"
+    if git_path.is_file():
+        content = git_path.read_text(encoding="utf-8").strip()
+        if content.startswith("gitdir:"):
+            git_dir = (repo / content.split(":", 1)[1].strip()).resolve()
+        else:
+            return {"commit": None, "short_commit": None, "branch": None}
+    elif git_path.is_dir():
+        git_dir = git_path
+    else:
+        return {"commit": None, "short_commit": None, "branch": None}
+
+    common_dir = git_dir
+    common_dir_file = git_dir / "commondir"
+    if common_dir_file.exists():
+        common_dir = (
+            git_dir / common_dir_file.read_text(encoding="utf-8").strip()
+        ).resolve()
+
+    head_file = git_dir / "HEAD"
+    if not head_file.exists():
+        return {"commit": None, "short_commit": None, "branch": None}
+
+    head = head_file.read_text(encoding="utf-8").strip()
+    if not head.startswith("ref:"):
+        return {"commit": head, "short_commit": head[:7], "branch": "detached"}
+
+    ref = head.split(" ", 1)[1]
+    branch = ref.removeprefix("refs/heads/")
+    commit = None
+    ref_file = common_dir / ref
+    if ref_file.exists():
+        commit = ref_file.read_text(encoding="utf-8").strip()
+    else:
+        packed_refs = common_dir / "packed-refs"
+        if packed_refs.exists():
+            for line in packed_refs.read_text(encoding="utf-8").splitlines():
+                if line.startswith("#") or not line:
+                    continue
+                parts = line.split(" ")
+                if len(parts) == 2 and parts[1] == ref:
+                    commit = parts[0]
+                    break
+
+    return {
+        "commit": commit,
+        "short_commit": commit[:7] if commit else None,
+        "branch": branch,
+    }
+
+
 def read_config_snapshot(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -98,9 +150,19 @@ def collect_baseline_status() -> list[dict[str, Any]]:
 
 def build_report(config_path: Path, dry_run: bool) -> dict[str, Any]:
     now = dt.datetime.now(dt.timezone.utc).isoformat()
-    commit = try_run_command(["git", "rev-parse", "HEAD"], default="unavailable")
-    short_commit = try_run_command(["git", "rev-parse", "--short", "HEAD"], default="nogit")
-    branch = try_run_command(["git", "branch", "--show-current"], default="unavailable")
+    file_git = resolve_git_metadata_from_files(Path.cwd())
+    commit = try_run_command(
+        ["git", "rev-parse", "HEAD"],
+        default=file_git["commit"] or "unavailable",
+    )
+    short_commit = try_run_command(
+        ["git", "rev-parse", "--short", "HEAD"],
+        default=file_git["short_commit"] or "nogit",
+    )
+    branch = try_run_command(
+        ["git", "branch", "--show-current"],
+        default=file_git["branch"] or "unavailable",
+    )
     dirty_status = try_run_command(["git", "status", "--short"], default=None)
 
     return {
