@@ -5,9 +5,9 @@ This repo is a Mosaic-derived code component for SCH-BinderDesign.
 ## Remotes
 
 - `upstream`: official `escalante-bio/mosaic`.
-- `origin`: pending writable fork.
+- `origin`: writable fork at `git@github.com:a-green-hand-jack/mosaic.git`.
 
-Do not push to `upstream`. Add a writable fork as `origin` after GitHub authentication is repaired or a fork URL is provided.
+Do not push to `upstream`.
 
 ## Current Priority
 
