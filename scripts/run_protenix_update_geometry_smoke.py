@@ -46,6 +46,21 @@ METHODS = [
 def configure_protenix_cache(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     protenix_backend._CACHE_DIR = str(path)
+    protenix_backend.download_data()
+
+    from protenix.configs.configs_data import data_configs
+    from protenix.data import ccd
+
+    components_file = path / "components.v20240608.cif"
+    rdkit_file = path / "components.v20240608.cif.rdkit_mol.pkl"
+    cluster_file = path / "clusters-by-entity-40.txt"
+    data_configs["ccd_components_file"] = str(components_file)
+    data_configs["ccd_components_rdkit_mol_file"] = str(rdkit_file)
+    data_configs["pdb_cluster_file"] = str(cluster_file)
+    ccd.COMPONENTS_FILE = str(components_file)
+    ccd.RKDIT_MOL_PKL = rdkit_file
+    ccd.biotite_load_ccd_cif.cache_clear()
+    ccd.get_component_atom_array.cache_clear()
 
 
 def read_target_sequence(path: Path, target_length: int) -> str:
