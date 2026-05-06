@@ -28,27 +28,49 @@ caches:
   boltz_cache: /projects/p32572/Jieke/.cache/boltz
 
 baselines:
-  - id: B0
+  - id: M0
     name: random_sequence_scoring
     status: planned
     candidate_budget: 4
-  - id: B1
+  - id: M1
     name: protenix_single_oracle_hallucination
     status: planned
     source_example: examples/batched_protenix.py
     optimizer_steps_soft: 80
     optimizer_steps_sharp: 30
     greedy_steps: 50
-  - id: B2
-    name: boltzgen_boltz2_ranking
-    status: blocked_on_boltz_cache
-    source_example: examples/boltzgen_pipeline.py
-    candidate_budget: 60
-  - id: B3
-    name: mosaic_weighted_composite
-    status: planned_after_B1_B2
+  - id: M2
+    name: second_single_oracle_hallucination
+    status: blocked_on_oracle_setup
+    candidate_budget: 4
+  - id: M3
+    name: naive_weighted_multi_oracle
+    status: planned_after_M1
+  - id: M4
+    name: normalized_or_clipped_weighted_multi_oracle
+    status: planned_after_M3
+  - id: M5
+    name: posthoc_reranking
+    status: planned_after_M1_M3
+  - id: M6
+    name: sch_soft_cone
+    status: planned_after_update_geometry_instrumentation
+  - id: M7
+    name: sch_hard_cone
+    status: planned_after_M6
+  - id: M8
+    name: sch_fisher_kl_geometry
+    status: planned_after_M6
 
 metrics:
+  update_geometry:
+    - pairwise_gradient_cosine
+    - oracle_harm_rate
+    - worst_oracle_directional_derivative
+    - mean_oracle_descent
+    - cone_violation_rate
+    - step_norm
+    - sequence_entropy_delta
   structure_confidence:
     - binder_mean_plddt
     - interface_pae

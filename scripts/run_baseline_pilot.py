@@ -122,27 +122,57 @@ def collect_gpu_info() -> list[dict[str, str]]:
 def collect_baseline_status() -> list[dict[str, Any]]:
     return [
         {
-            "id": "B0",
+            "id": "M0",
             "name": "random_sequence_scoring",
             "status": "planned",
             "runner": None,
         },
         {
-            "id": "B1",
+            "id": "M1",
             "name": "protenix_single_oracle_hallucination",
             "status": "planned",
             "source_example": "examples/batched_protenix.py",
         },
         {
-            "id": "B2",
-            "name": "boltzgen_boltz2_ranking",
-            "status": "blocked_on_boltz_cache",
-            "source_example": "examples/boltzgen_pipeline.py",
+            "id": "M2",
+            "name": "second_single_oracle_hallucination",
+            "status": "blocked_on_oracle_setup",
+            "runner": None,
         },
         {
-            "id": "B3",
-            "name": "mosaic_weighted_composite",
-            "status": "planned_after_B1_B2",
+            "id": "M3",
+            "name": "naive_weighted_multi_oracle",
+            "status": "planned_after_M1",
+            "runner": None,
+        },
+        {
+            "id": "M4",
+            "name": "normalized_or_clipped_weighted_multi_oracle",
+            "status": "planned_after_M3",
+            "runner": None,
+        },
+        {
+            "id": "M5",
+            "name": "posthoc_reranking",
+            "status": "planned_after_M1_M3",
+            "runner": None,
+        },
+        {
+            "id": "M6",
+            "name": "sch_soft_cone",
+            "status": "planned_after_update_geometry_instrumentation",
+            "runner": None,
+        },
+        {
+            "id": "M7",
+            "name": "sch_hard_cone",
+            "status": "planned_after_M6",
+            "runner": None,
+        },
+        {
+            "id": "M8",
+            "name": "sch_fisher_kl_geometry",
+            "status": "planned_after_M6",
             "runner": None,
         },
     ]
@@ -199,9 +229,10 @@ def build_report(config_path: Path, dry_run: bool) -> dict[str, Any]:
         "baselines": collect_baseline_status(),
         "next_required_actions": [
             "Complete A100/H100 JAX CUDA smoke checks.",
-            "Hydrate and verify /projects/p32572/Jieke/.cache/boltz.",
-            "Implement B0 candidate generation and shared scoring schema.",
-            "Adapt examples/batched_protenix.py into a non-notebook B1 runner.",
+            "Implement M0 candidate generation and shared scoring schema.",
+            "Adapt examples/batched_protenix.py into a non-notebook M1 runner.",
+            "Add trajectory, per-oracle-gradient, and update-direction logging.",
+            "Implement M3/M4 scalarization baselines before SCH variants.",
         ],
     }
 
