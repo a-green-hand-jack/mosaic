@@ -220,6 +220,16 @@ def choose_raw_direction(
             step_size=step_size,
         )
 
+    if method.name == "contact_preserving_soft_cone":
+        if x is None or step_size is None:
+            raise ValueError("contact_preserving_soft_cone needs x and step_size")
+        return choose_contact_preserving_direction(
+            grads=grads,
+            weights=weights,
+            x=x,
+            step_size=step_size,
+        )
+
     raise ValueError(method.name)
 
 
@@ -273,6 +283,79 @@ def choose_soft_cone_direction(
             best_score = score
             best_raw = raw
     return best_raw
+
+
+def cone_candidates(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    denominator: int,
+) -> list[jax.Array]:
+    names = list(grads)
+    normed_grads = {name: normalized(grads[name]) for name in names}
+    candidates = [
+        -sum(weights[name] * normed_grads[name] for name in names),
+        -sum(weights[name] * grads[name] for name in names),
+    ]
+    candidates.extend([-normed_grads[name] for name in names])
+    candidates.extend([-grads[name] for name in names])
+    for alpha in simplex_weight_grid(len(names), denominator=denominator):
+        if np.count_nonzero(alpha) == 0:
+            continue
+        raw = -sum(float(a) * normed_grads[name] for a, name in zip(alpha, names))
+        candidates.append(raw)
+    return candidates
+
+
+def choose_contact_preserving_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    step_size: float,
+    aux_slack: float = 0.02,
+    max_aux_harms: int = 1,
+) -> jax.Array:
+    names = list(grads)
+    primary = names[0]
+    aux_names = names[1:]
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=8)
+
+    feasible = []
+    fallback = []
+    for raw in candidates:
+        _, actual_update = projected_update(x, raw, step_size)
+        derivatives = {name: flatten_dot(grads[name], actual_update) for name in names}
+        aux_derivatives = [derivatives[name] for name in aux_names]
+        aux_harms = sum(value > 0 for value in aux_derivatives)
+        aux_worst = max(aux_derivatives) if aux_derivatives else derivatives[primary]
+        primary_derivative = derivatives[primary]
+        step_norm_value = grad_norm(actual_update)
+        total_harms = sum(value > 0 for value in derivatives.values())
+
+        fallback.append(
+            (
+                total_harms,
+                max(derivatives.values()),
+                primary_derivative,
+                -step_norm_value,
+                raw,
+            )
+        )
+        if aux_harms <= max_aux_harms and aux_worst <= aux_slack and primary_derivative < 0:
+            feasible.append(
+                (
+                    primary_derivative,
+                    aux_harms,
+                    aux_worst,
+                    -step_norm_value,
+                    raw,
+                )
+            )
+
+    if feasible:
+        return min(feasible, key=lambda item: item[:-1])[-1]
+    return min(fallback, key=lambda item: item[:-1])[-1]
 
 
 def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:

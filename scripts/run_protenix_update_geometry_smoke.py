@@ -41,6 +41,7 @@ METHODS = [
     MethodSpec("M3", "naive_weighted"),
     MethodSpec("M4", "normalized_weighted"),
     MethodSpec("M6", "soft_cone_correction"),
+    MethodSpec("M7", "contact_preserving_soft_cone"),
 ]
 
 
