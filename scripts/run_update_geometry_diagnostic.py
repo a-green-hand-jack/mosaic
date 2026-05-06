@@ -285,7 +285,7 @@ def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
     return out
 
 
-def run_single_method(
+def run_single_method_with_terminal(
     *,
     method: MethodSpec,
     losses: dict[str, LossTerm],
@@ -295,7 +295,7 @@ def run_single_method(
     steps: int,
     step_size: float,
     init_temperature: float,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], jax.Array]:
     key = jax.random.key(seed)
     x = jax.nn.softmax(
         init_temperature * jax.random.gumbel(key, shape=(binder_length, len(TOKENS))),
@@ -351,6 +351,30 @@ def run_single_method(
         rows.append(row)
         x = x_new
 
+    return rows, x
+
+
+def run_single_method(
+    *,
+    method: MethodSpec,
+    losses: dict[str, LossTerm],
+    weights: dict[str, float],
+    seed: int,
+    binder_length: int,
+    steps: int,
+    step_size: float,
+    init_temperature: float,
+) -> list[dict[str, Any]]:
+    rows, _terminal = run_single_method_with_terminal(
+        method=method,
+        losses=losses,
+        weights=weights,
+        seed=seed,
+        binder_length=binder_length,
+        steps=steps,
+        step_size=step_size,
+        init_temperature=init_temperature,
+    )
     return rows
 
 
