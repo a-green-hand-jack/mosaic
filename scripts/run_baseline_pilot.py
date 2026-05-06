@@ -22,6 +22,13 @@ def run_command(args: list[str]) -> str:
     return subprocess.check_output(args, text=True).strip()
 
 
+def try_run_command(args: list[str], default: str | None = None) -> str | None:
+    try:
+        return run_command(args)
+    except Exception:
+        return default
+
+
 def read_config_snapshot(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -91,9 +98,10 @@ def collect_baseline_status() -> list[dict[str, Any]]:
 
 def build_report(config_path: Path, dry_run: bool) -> dict[str, Any]:
     now = dt.datetime.now(dt.timezone.utc).isoformat()
-    commit = run_command(["git", "rev-parse", "HEAD"])
-    short_commit = run_command(["git", "rev-parse", "--short", "HEAD"])
-    branch = run_command(["git", "branch", "--show-current"])
+    commit = try_run_command(["git", "rev-parse", "HEAD"], default="unavailable")
+    short_commit = try_run_command(["git", "rev-parse", "--short", "HEAD"], default="nogit")
+    branch = try_run_command(["git", "branch", "--show-current"], default="unavailable")
+    dirty_status = try_run_command(["git", "status", "--short"], default=None)
 
     return {
         "schema_version": 1,
@@ -106,7 +114,7 @@ def build_report(config_path: Path, dry_run: bool) -> dict[str, Any]:
             "commit": commit,
             "short_commit": short_commit,
             "branch": branch,
-            "dirty": bool(run_command(["git", "status", "--short"])),
+            "dirty": None if dirty_status is None else bool(dirty_status),
         },
         "host": {
             "hostname": socket.gethostname(),
