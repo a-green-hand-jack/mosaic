@@ -1,0 +1,71 @@
+# Phase 0 IL7RA baseline pilot config.
+# This file is intentionally simple so it can be snapshotted in run provenance
+# before the full Mosaic runner is implemented.
+
+project:
+  name: SCH-BinderDesign
+  branch: baseline/phase0-mosaic-baselines
+
+target:
+  id: IL7RA
+  structure_path: IL7RA.cif
+  chain: A
+  binder_length: 80
+
+runtime:
+  output_dir: docs/runs
+  results_dir: docs/results
+  dry_run: true
+  seed_start: 0
+  num_seeds: 4
+  gpu_families:
+    - a100
+    - h100
+
+caches:
+  uv_cache_dir: /projects/p32572/Jieke/.cache/uv
+  uv_python_install_dir: /projects/p32572/Jieke/Envs/uv-python
+  boltz_cache: /projects/p32572/Jieke/.cache/boltz
+
+baselines:
+  - id: B0
+    name: random_sequence_scoring
+    status: planned
+    candidate_budget: 4
+  - id: B1
+    name: protenix_single_oracle_hallucination
+    status: planned
+    source_example: examples/batched_protenix.py
+    optimizer_steps_soft: 80
+    optimizer_steps_sharp: 30
+    greedy_steps: 50
+  - id: B2
+    name: boltzgen_boltz2_ranking
+    status: blocked_on_boltz_cache
+    source_example: examples/boltzgen_pipeline.py
+    candidate_budget: 60
+  - id: B3
+    name: mosaic_weighted_composite
+    status: planned_after_B1_B2
+
+metrics:
+  structure_confidence:
+    - binder_mean_plddt
+    - interface_pae
+    - iptm
+    - ptm
+  robustness:
+    - holdout_iptm
+    - holdout_interface_pae
+    - adversarial_gap
+    - cross_oracle_pass_count
+  sequence_sanity:
+    - cysteine_count
+    - max_hydrophobic_stretch
+    - n_glycosylation_motif_count
+    - net_charge
+  resource:
+    - gpu_name
+    - gpu_family
+    - wall_clock_seconds
+    - oracle_calls
