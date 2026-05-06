@@ -1,0 +1,95 @@
+{
+  "args": {
+    "binder_length": 80,
+    "init_temperature": 0.5,
+    "num_seeds": 8,
+    "output_dir": "docs/results",
+    "report_dir": "docs/reports",
+    "seed_start": 0,
+    "step_size": 0.45,
+    "steps": 24,
+    "trigram_path": "trigram_seg.pkl"
+  },
+  "created_at_utc": "2026-05-06T10:50:02.424266+00:00",
+  "git": {
+    "branch": "baseline/phase0-mosaic-baselines",
+    "commit": "581f872a464a66c818cfdee3b82c28165351d87b",
+    "dirty": null,
+    "short_commit": "581f872"
+  },
+  "methods": [
+    {
+      "method_id": "M1",
+      "name": "single_hydrophobic_proxy"
+    },
+    {
+      "method_id": "M3",
+      "name": "naive_weighted"
+    },
+    {
+      "method_id": "M4",
+      "name": "normalized_weighted"
+    },
+    {
+      "method_id": "M6",
+      "name": "soft_cone_correction"
+    }
+  ],
+  "oracles": [
+    "hydrophobic_contact",
+    "solubility_limit",
+    "charge_target",
+    "trigram_naturalness"
+  ],
+  "run_id": "phase0_update_geometry_581f872_20260506T105002Z",
+  "summary": [
+    {
+      "mean_final_charge_loss": 0.0015449743176532138,
+      "mean_final_entropy": 2.607705235481262,
+      "mean_final_hydrophobic_loss": -0.36759501695632935,
+      "mean_final_solubility_loss": 0.0753563940525055,
+      "mean_final_trigram_loss": 3.1257430613040924,
+      "mean_oracle_harm_rate": 0.24479166666666666,
+      "mean_step_norm": 0.08882687912626312,
+      "mean_worst_oracle_directional_derivative": 0.0011053581860831546,
+      "method": "soft_cone_correction",
+      "num_rows": 192
+    },
+    {
+      "mean_final_charge_loss": 0.0038161094907991355,
+      "mean_final_entropy": 2.031053274869919,
+      "mean_final_hydrophobic_loss": -0.3621254116296768,
+      "mean_final_solubility_loss": 0.07085639424622059,
+      "mean_final_trigram_loss": 2.677798569202423,
+      "mean_oracle_harm_rate": 0.2786458333333333,
+      "mean_step_norm": 0.4735008515417576,
+      "mean_worst_oracle_directional_derivative": 0.00289181228314798,
+      "method": "normalized_weighted",
+      "num_rows": 192
+    },
+    {
+      "mean_final_charge_loss": 0.0032118418894242495,
+      "mean_final_entropy": 2.3052718937397003,
+      "mean_final_hydrophobic_loss": -0.40362193807959557,
+      "mean_final_solubility_loss": 0.10697339195758104,
+      "mean_final_trigram_loss": 2.7875018417835236,
+      "mean_oracle_harm_rate": 0.3307291666666667,
+      "mean_step_norm": 0.0962050762027502,
+      "mean_worst_oracle_directional_derivative": 0.0019332918078210544,
+      "method": "naive_weighted",
+      "num_rows": 192
+    },
+    {
+      "mean_final_charge_loss": 0.004237469052895904,
+      "mean_final_entropy": 2.1688177585601807,
+      "mean_final_hydrophobic_loss": -0.8766118437051773,
+      "mean_final_solubility_loss": 0.5766118988394737,
+      "mean_final_trigram_loss": 3.4914904832839966,
+      "mean_oracle_harm_rate": 0.6223958333333334,
+      "mean_step_norm": 0.09448761163124193,
+      "mean_worst_oracle_directional_derivative": 0.02026005868780582,
+      "method": "single_hydrophobic_proxy",
+      "num_rows": 192
+    }
+  ]
+}
