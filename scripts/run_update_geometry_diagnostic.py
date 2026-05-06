@@ -198,8 +198,8 @@ def choose_raw_direction(
 ) -> jax.Array:
     ordered = list(grads)
 
-    if method.name == "single_hydrophobic_proxy":
-        return -grads["hydrophobic_contact"]
+    if method.name.startswith("single_"):
+        return -grads[ordered[0]]
 
     if method.name == "naive_weighted":
         return -sum(weights[name] * grads[name] for name in ordered)
