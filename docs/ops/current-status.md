@@ -21,7 +21,7 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Phase 0 ACT-010: diagnose why safer Protenix update geometry improves update-level metrics but does not yet consistently improve final argmax candidates.
+Phase 0 method revision after ACT-010 through ACT-015A. Current evidence supports gradient-guided relaxed optimization plus cold top-k handoff as useful, but rules out naive hard-sample CEM from a random relaxed distribution as the next scalable path. The next priority is ACT-015B QP-style constrained update, with optional warm-start CEM only as a diagnostic.
 
 ## Latest Run
 
@@ -69,6 +69,22 @@ Result summary: with matched `top_k=4`, `samples_per_method_seed=4`, and BT PAE 
   - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z_topk_sensitivity.json`
 
 Result summary: top-k handoff improves M7c as sample budget increases, but the ACT-011 M7c advantage did not replicate. M3 naive weighted remains best across budgets `1,4,8` and rerank metrics `bt_pae`, `bt_iptm`, and `contact`. The next step should revise the terminal distribution/objective rather than simply increase top-k budget.
+
+## ACT-015A Result
+
+- Commit: `1ea2072`
+- Run ID: `phase0_protenix_cem_1ea2072_20260507T080401Z`
+- Server/node: Quest H100 `qgpu3019`
+- Runtime: 6:29 wall-clock, exit status 0
+- Report: `docs/reports/phase0_act015a_cem_2026-05-07.md`
+- Raw artifacts:
+  - `docs/reports/phase0_protenix_cem_1ea2072_20260507T080401Z.md`
+  - `docs/results/phase0_protenix_cem_1ea2072_20260507T080401Z.json`
+  - `docs/results/phase0_protenix_cem_1ea2072_20260507T080401Z_candidates.csv`
+  - `docs/results/phase0_protenix_cem_1ea2072_20260507T080401Z_cem_rounds.csv`
+  - `docs/results/phase0_protenix_cem_1ea2072_20260507T080401Z_topk_sensitivity.md`
+
+Result summary: naive CEM/elite-sampling successfully lowers entropy but does not improve hard candidate quality. Under matched 24-candidate BT PAE reranking, M3 reaches 10.7001, M7c reaches 10.8029, CEMp reaches 14.9997, and CEMc reaches 15.8457. Do not scale this CEM variant; prioritize QP-style constrained gradient updates or only test warm-start CEM as a diagnostic.
 
 ## Blockers
 
