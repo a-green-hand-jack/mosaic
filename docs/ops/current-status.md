@@ -1,6 +1,6 @@
 # Code Ops Status
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 ## State
 
@@ -21,9 +21,17 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Prepare Phase 0 trajectory geometry instrumentation.
+Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline worktree result is ACT-019 gradual hardening at pushed commit `b92238c`.
 
 ## Blockers
 
-- JAX CUDA smoke check must run on both A100 and H100 compute nodes when possible because Quest exposes multiple GPU families.
 - Torch is currently CPU-only because Mosaic's `pyproject.toml` routes torch through the PyTorch CPU wheel index.
+
+## Latest Experiment State
+
+- Baseline branch: `baseline/phase0-mosaic-baselines`
+- Local worktree: `/Users/jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
+- Quest worktree: `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
+- Latest pushed commit: `b92238c`
+- Latest report: `docs/reports/phase0_act019_gradual_hardening_2026-05-07.md`
+- Result: naive early position hardening lowers entropy but increases update harm and worsens soft/argmax quality; next method should be warm-started hard-candidate optimization.
