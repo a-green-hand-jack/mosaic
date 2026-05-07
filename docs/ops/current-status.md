@@ -53,6 +53,23 @@ Result summary: aggressive contact-preserving update `M7c` beats naive/normalize
 
 Result summary: with matched `top_k=4`, `samples_per_method_seed=4`, and BT PAE reranking, M7c top-k samples beat M7c argmax and naive weighted top-k/argmax on discrete candidate interface metrics. This supports discretization-aware handoff as a viable next method component.
 
+## ACT-012 Result
+
+- Commit: `cc6864e`
+- Run ID: `phase0_protenix_update_geometry_cc6864e_20260507T051752Z`
+- Server/node: Quest H100 `qgpu3019`
+- Runtime: 10:42 wall-clock, exit status 0
+- Report: `docs/reports/phase0_act012_topk_sensitivity_2026-05-07.md`
+- Raw artifacts:
+  - `docs/reports/phase0_protenix_update_geometry_cc6864e_20260507T051752Z.md`
+  - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z.json`
+  - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z_candidates.csv`
+  - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z_topk_sensitivity.md`
+  - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z_topk_sensitivity.csv`
+  - `docs/results/phase0_protenix_update_geometry_cc6864e_20260507T051752Z_topk_sensitivity.json`
+
+Result summary: top-k handoff improves M7c as sample budget increases, but the ACT-011 M7c advantage did not replicate. M3 naive weighted remains best across budgets `1,4,8` and rerank metrics `bt_pae`, `bt_iptm`, and `contact`. The next step should revise the terminal distribution/objective rather than simply increase top-k budget.
+
 ## Blockers
 
 - Torch is currently CPU-only because Mosaic's `pyproject.toml` routes torch through the PyTorch CPU wheel index.

@@ -36,6 +36,8 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - Interpretation: M7c aggressive contact-preserving update is best under soft terminal scoring, but argmax loses most of the gain. The next branch task is a discretization-aware candidate handoff diagnostic, not another pure slack sweep.
 - ACT-011 implementation commit: `09ed71d`.
 - ACT-011 result: H100 run `phase0_protenix_update_geometry_09ed71d_20260507T045421Z` completed successfully and is summarized in `docs/reports/phase0_act011_topk_handoff_2026-05-07.md`. M7c top-k sample/rerank beats M7c argmax and naive weighted top-k/argmax on discrete interface metrics under matched sample budget.
+- ACT-012 implementation commit: `cc6864e`.
+- ACT-012 result: H100 run `phase0_protenix_update_geometry_cc6864e_20260507T051752Z` completed successfully and is summarized in `docs/reports/phase0_act012_topk_sensitivity_2026-05-07.md`. M7c improves with sample budget, but M3 naive weighted is best across tested budgets and rerank metrics.
 
 ## Exit Condition
 
@@ -45,4 +47,4 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - A100/H100 smoke result is recorded or explicitly blocked by queue availability.
 - M0/M1/M3 update-level logging is ready for a Phase 0 diagnostic run.
 - Soft and argmax candidate scoring are separated in the output schema.
-- ACT-011 top-k handoff has a positive reduced-run signal; next exit gate is sample-budget/rerank-metric sensitivity before scaling.
+- ACT-012 blocks immediate scale-up; next exit gate is revising the terminal distribution or objective, such as entropy annealing, lower sampling temperature, or straight-through hard candidate scoring.
