@@ -21,7 +21,7 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline worktree result is ACT-020 warm-started CEM at pushed commit `6013a6f`.
+Continue Phase 0 reduced Protenix update-geometry experiments. Latest completed baseline worktree result is ACT-020 warm-started CEM; ACT-021 diversity-preserving warm CEM is implemented and queued at pushed commit `960cf60`.
 
 ## Blockers
 
@@ -32,6 +32,7 @@ Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline w
 - Baseline branch: `baseline/phase0-mosaic-baselines`
 - Local worktree: `/Users/jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
 - Quest worktree: `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
-- Latest pushed commit: `6013a6f`
+- Latest pushed commit: `960cf60`
 - Latest report: `docs/reports/phase0_act020_warm_cem_2026-05-07.md`
 - Result: warm-started CEM repairs final argmax quality, especially `WCEMp_M7c`, but source M8a/M7c top-k remains stronger at matched budget 24; next method should preserve source diversity during warm CEM.
+- Running/queued: ACT-021 jobs `7430374` (`sch-act021-h100`) and `7430412` (`sch-act021-anygpu`) are submitted on Quest and pending with reason `Priority`.
