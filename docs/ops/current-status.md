@@ -21,7 +21,7 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Phase 0 method revision after ACT-010 through ACT-015A. Current evidence supports gradient-guided relaxed optimization plus cold top-k handoff as useful, but rules out naive hard-sample CEM from a random relaxed distribution as the next scalable path. The next priority is ACT-015B QP-style constrained update, with optional warm-start CEM only as a diagnostic.
+Phase 0 method revision after ACT-010 through ACT-015B. Current evidence supports gradient-guided relaxed optimization plus cold top-k handoff as useful, but rules out naive hard-sample CEM from a random relaxed distribution as the next scalable path. ACT-015B QP-grid is partially positive: M8a strongly improves soft terminal interface metrics and top-k BT ipTM, but M3 still wins BT PAE/contact top-k and M8a increases update harm. The next priority is a small QP tuning sweep, not scale-up.
 
 ## Latest Run
 
@@ -85,6 +85,22 @@ Result summary: top-k handoff improves M7c as sample budget increases, but the A
   - `docs/results/phase0_protenix_cem_1ea2072_20260507T080401Z_topk_sensitivity.md`
 
 Result summary: naive CEM/elite-sampling successfully lowers entropy but does not improve hard candidate quality. Under matched 24-candidate BT PAE reranking, M3 reaches 10.7001, M7c reaches 10.8029, CEMp reaches 14.9997, and CEMc reaches 15.8457. Do not scale this CEM variant; prioritize QP-style constrained gradient updates or only test warm-start CEM as a diagnostic.
+
+## ACT-015B Result
+
+- Commit: `ba8c855`
+- Run ID: `phase0_protenix_update_geometry_ba8c855_20260507T082915Z`
+- Server/node: Quest H100 `qgpu3019`
+- Runtime: 10:37 wall-clock, exit status 0
+- Report: `docs/reports/phase0_act015b_qp_2026-05-07.md`
+- Raw artifacts:
+  - `docs/reports/phase0_protenix_update_geometry_ba8c855_20260507T082915Z.md`
+  - `docs/results/phase0_protenix_update_geometry_ba8c855_20260507T082915Z.json`
+  - `docs/results/phase0_protenix_update_geometry_ba8c855_20260507T082915Z_candidates.csv`
+  - `docs/results/phase0_protenix_update_geometry_ba8c855_20260507T082915Z_steps.csv`
+  - `docs/results/phase0_protenix_update_geometry_ba8c855_20260507T082915Z_topk_sensitivity.md`
+
+Result summary: QP-grid M8a is promising but not accepted. M8a soft terminal reaches BT PAE 7.0264 and BT ipTM 0.5880, better than M3 soft 8.7660/0.5183. Under budget-8 BT ipTM reranking, M8a top-k reaches 0.4800 versus M3 0.4576. However, M3 still wins budget-8 BT PAE and contact reranking, and M8a has higher update harm than M3. M8b has better harm control but weaker candidates.
 
 ## Blockers
 
