@@ -239,6 +239,19 @@ def choose_raw_direction(
             cone_denominator=method.cone_denominator,
         )
 
+    if method.name == "contact_qp_grid":
+        if x is None or step_size is None:
+            raise ValueError("contact_qp_grid needs x and step_size")
+        return choose_contact_qp_grid_direction(
+            grads=grads,
+            weights=weights,
+            x=x,
+            step_size=step_size,
+            aux_slack=method.aux_slack,
+            min_primary_descent_ratio=method.min_primary_descent_ratio,
+            cone_denominator=method.cone_denominator,
+        )
+
     raise ValueError(method.name)
 
 
@@ -370,6 +383,91 @@ def choose_contact_preserving_direction(
     return min(fallback, key=lambda item: item[:-1])[-1]
 
 
+def choose_contact_qp_grid_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    step_size: float,
+    aux_slack: float = 0.02,
+    min_primary_descent_ratio: float = 0.0,
+    cone_denominator: int = 8,
+) -> jax.Array:
+    """Approximate a constrained QP over the existing candidate direction set.
+
+    The intended local problem is:
+
+        minimize ||d - d_contact||^2
+        subject to contact descent and bounded auxiliary harm.
+
+    We avoid a solver dependency in the smoke diagnostic by evaluating the same
+    cone candidates as M7c after simplex projection, then selecting the feasible
+    candidate whose actual projected update is closest to the projected
+    contact-only update.
+    """
+    names = list(grads)
+    primary = names[0]
+    aux_names = names[1:]
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=cone_denominator)
+    contact_raw = -normalized(grads[primary])
+    _, contact_update = projected_update(x, contact_raw, step_size)
+
+    evaluated = []
+    for raw in candidates:
+        _, actual_update = projected_update(x, raw, step_size)
+        derivatives = {name: flatten_dot(grads[name], actual_update) for name in names}
+        primary_derivative = derivatives[primary]
+        aux_derivatives = [derivatives[name] for name in aux_names]
+        aux_worst = max(aux_derivatives) if aux_derivatives else primary_derivative
+        aux_violation = sum(max(0.0, value - aux_slack) for value in aux_derivatives)
+        contact_distance = grad_norm(actual_update - contact_update)
+        step_norm_value = grad_norm(actual_update)
+        total_harms = sum(value > 0 for value in derivatives.values())
+        evaluated.append(
+            {
+                "raw": raw,
+                "primary_derivative": primary_derivative,
+                "aux_worst": aux_worst,
+                "aux_violation": aux_violation,
+                "contact_distance": contact_distance,
+                "step_norm": step_norm_value,
+                "total_harms": total_harms,
+                "worst_derivative": max(derivatives.values()),
+            }
+        )
+
+    best_primary_derivative = min(item["primary_derivative"] for item in evaluated)
+    min_allowed_primary = min_primary_descent_ratio * best_primary_derivative
+    feasible = [
+        item
+        for item in evaluated
+        if item["primary_derivative"] < 0
+        and item["primary_derivative"] <= min_allowed_primary
+        and item["aux_violation"] <= 1e-8
+    ]
+    if feasible:
+        return min(
+            feasible,
+            key=lambda item: (
+                item["contact_distance"],
+                item["aux_worst"],
+                item["primary_derivative"],
+                -item["step_norm"],
+            ),
+        )["raw"]
+
+    return min(
+        evaluated,
+        key=lambda item: (
+            item["aux_violation"],
+            max(0.0, item["primary_derivative"] - min_allowed_primary),
+            item["contact_distance"],
+            item["total_harms"],
+            item["worst_derivative"],
+        ),
+    )["raw"]
+
+
 def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
     names = list(grads)
     out = {}
@@ -445,6 +543,9 @@ def run_single_method_with_terminal(
             f"dir_{name}": flatten_dot(grad, actual_update)
             for name, grad in grads.items()
         }
+        oracle_names = list(grads)
+        primary_name = oracle_names[0]
+        aux_directional = [directional[f"dir_{name}"] for name in oracle_names[1:]]
         harms = [value > 0 for value in directional.values()]
         cosines = offdiag_cosines(grads)
         row = {
@@ -460,6 +561,10 @@ def run_single_method_with_terminal(
             "terminal_anneal_temperature": anneal_temperature,
             "oracle_harm_rate": float(np.mean(harms)),
             "worst_oracle_directional_derivative": max(directional.values()),
+            "primary_oracle": primary_name,
+            "primary_directional_derivative": directional[f"dir_{primary_name}"],
+            "aux_harm_count": sum(value > 0 for value in aux_directional),
+            "aux_worst_directional_derivative": max(aux_directional) if aux_directional else 0.0,
             "mean_oracle_descent": float(np.mean(list(directional.values()))),
             "step_norm": grad_norm(actual_update),
             "projected_step_norm": grad_norm(projected_update_value),

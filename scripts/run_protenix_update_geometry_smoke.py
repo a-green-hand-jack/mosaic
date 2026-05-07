@@ -75,6 +75,22 @@ METHODS = [
         cone_denominator=10,
         terminal_anneal_final_temperature=0.25,
     ),
+    MethodSpec(
+        "M8a",
+        "contact_qp_grid",
+        aux_slack=0.08,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+    ),
+    MethodSpec(
+        "M8b",
+        "contact_qp_grid",
+        aux_slack=0.04,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+    ),
 ]
 
 
