@@ -1,6 +1,6 @@
 # Code Ops Status
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 ## State
 
@@ -21,9 +21,23 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Prepare Phase 0 trajectory geometry instrumentation.
+Phase 0 ACT-010: diagnose why safer Protenix update geometry improves update-level metrics but does not yet consistently improve final argmax candidates.
+
+## Latest Run
+
+- Commit: `f092264`
+- Run ID: `phase0_protenix_update_geometry_f092264_20260507T042412Z`
+- Server/node: Quest H100 `qgpu3019`
+- Runtime: 16:24 wall-clock, exit status 0
+- Report: `docs/reports/phase0_act010_contact_sweep_2026-05-07.md`
+- Raw artifacts:
+  - `docs/reports/phase0_protenix_update_geometry_f092264_20260507T042412Z.md`
+  - `docs/results/phase0_protenix_update_geometry_f092264_20260507T042412Z.json`
+  - `docs/results/phase0_protenix_update_geometry_f092264_20260507T042412Z_steps.csv`
+  - `docs/results/phase0_protenix_update_geometry_f092264_20260507T042412Z_candidates.csv`
+
+Result summary: aggressive contact-preserving update `M7c` beats naive/normalized baselines under soft terminal scoring, but the advantage is mostly lost after argmax discretization. The next method step should target discretization-aware candidate handoff rather than only tuning cone slack.
 
 ## Blockers
 
-- JAX CUDA smoke check must run on both A100 and H100 compute nodes when possible because Quest exposes multiple GPU families.
 - Torch is currently CPU-only because Mosaic's `pyproject.toml` routes torch through the PyTorch CPU wheel index.
