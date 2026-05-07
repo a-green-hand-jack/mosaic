@@ -468,6 +468,51 @@ def choose_contact_qp_grid_direction(
     )["raw"]
 
 
+def contact_qp_grid_diagnostics(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    actual_update: jax.Array,
+    step_size: float,
+    aux_slack: float,
+    min_primary_descent_ratio: float,
+    cone_denominator: int,
+) -> dict[str, float | bool]:
+    names = list(grads)
+    primary = names[0]
+    aux_names = names[1:]
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=cone_denominator)
+    contact_raw = -normalized(grads[primary])
+    _, contact_update = projected_update(x, contact_raw, step_size)
+    candidate_primary = []
+    for raw in candidates:
+        _, candidate_update = projected_update(x, raw, step_size)
+        candidate_primary.append(flatten_dot(grads[primary], candidate_update))
+
+    best_primary_derivative = min(candidate_primary)
+    min_allowed_primary = min_primary_descent_ratio * best_primary_derivative
+    derivatives = {name: flatten_dot(grads[name], actual_update) for name in names}
+    aux_derivatives = [derivatives[name] for name in aux_names]
+    aux_violation = sum(max(0.0, value - aux_slack) for value in aux_derivatives)
+    primary_derivative = derivatives[primary]
+    contact_violation = max(0.0, primary_derivative - min_allowed_primary)
+    selected_feasible = (
+        primary_derivative < 0
+        and primary_derivative <= min_allowed_primary
+        and aux_violation <= 1e-8
+    )
+    return {
+        "qp_best_primary_derivative": best_primary_derivative,
+        "qp_min_allowed_primary_derivative": min_allowed_primary,
+        "qp_selected_primary_ratio": primary_derivative / (best_primary_derivative - 1e-12),
+        "qp_selected_aux_violation": aux_violation,
+        "qp_selected_contact_violation": contact_violation,
+        "qp_selected_contact_distance": grad_norm(actual_update - contact_update),
+        "qp_selected_feasible": selected_feasible,
+    }
+
+
 def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
     names = list(grads)
     out = {}
@@ -575,6 +620,19 @@ def run_single_method_with_terminal(
         row.update({f"loss_{name}": value for name, value in values.items()})
         row.update(directional)
         row.update(cosines)
+        if method.name == "contact_qp_grid":
+            row.update(
+                contact_qp_grid_diagnostics(
+                    grads=grads,
+                    weights=weights,
+                    x=x,
+                    actual_update=actual_update,
+                    step_size=step_size,
+                    aux_slack=method.aux_slack,
+                    min_primary_descent_ratio=method.min_primary_descent_ratio,
+                    cone_denominator=method.cone_denominator,
+                )
+            )
         rows.append(row)
         x = x_new
 
