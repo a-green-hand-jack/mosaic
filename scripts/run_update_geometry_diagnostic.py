@@ -239,9 +239,9 @@ def choose_raw_direction(
             cone_denominator=method.cone_denominator,
         )
 
-    if method.name == "contact_qp_grid":
+    if method.name in {"contact_qp_grid", "contact_qp_grid_contact_first"}:
         if x is None or step_size is None:
-            raise ValueError("contact_qp_grid needs x and step_size")
+            raise ValueError(f"{method.name} needs x and step_size")
         return choose_contact_qp_grid_direction(
             grads=grads,
             weights=weights,
@@ -250,6 +250,11 @@ def choose_raw_direction(
             aux_slack=method.aux_slack,
             min_primary_descent_ratio=method.min_primary_descent_ratio,
             cone_denominator=method.cone_denominator,
+            fallback_mode=(
+                "contact_first"
+                if method.name == "contact_qp_grid_contact_first"
+                else "aux_first"
+            ),
         )
 
     raise ValueError(method.name)
@@ -392,6 +397,7 @@ def choose_contact_qp_grid_direction(
     aux_slack: float = 0.02,
     min_primary_descent_ratio: float = 0.0,
     cone_denominator: int = 8,
+    fallback_mode: str = "aux_first",
 ) -> jax.Array:
     """Approximate a constrained QP over the existing candidate direction set.
 
@@ -456,6 +462,19 @@ def choose_contact_qp_grid_direction(
             ),
         )["raw"]
 
+    if fallback_mode == "contact_first":
+        return min(
+            evaluated,
+            key=lambda item: (
+                max(0.0, item["primary_derivative"] - min_allowed_primary),
+                item["aux_violation"],
+                item["total_harms"],
+                item["worst_derivative"],
+                item["contact_distance"],
+            ),
+        )["raw"]
+    if fallback_mode != "aux_first":
+        raise ValueError(f"Unknown QP fallback mode: {fallback_mode}")
     return min(
         evaluated,
         key=lambda item: (
@@ -620,7 +639,7 @@ def run_single_method_with_terminal(
         row.update({f"loss_{name}": value for name, value in values.items()})
         row.update(directional)
         row.update(cosines)
-        if method.name == "contact_qp_grid":
+        if method.name in {"contact_qp_grid", "contact_qp_grid_contact_first"}:
             row.update(
                 contact_qp_grid_diagnostics(
                     grads=grads,

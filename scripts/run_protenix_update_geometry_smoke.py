@@ -115,6 +115,30 @@ METHODS = [
         min_primary_descent_ratio=0.40,
         cone_denominator=10,
     ),
+    MethodSpec(
+        "M8f",
+        "contact_qp_grid_contact_first",
+        aux_slack=0.04,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+    ),
+    MethodSpec(
+        "M8g",
+        "contact_qp_grid_contact_first",
+        aux_slack=0.06,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+    ),
+    MethodSpec(
+        "M8h",
+        "contact_qp_grid",
+        aux_slack=0.04,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=20,
+    ),
 ]
 
 
