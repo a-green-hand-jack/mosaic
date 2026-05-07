@@ -153,6 +153,7 @@ class MethodSpec:
     max_aux_harms: int = 1
     min_primary_descent_ratio: float = 0.0
     cone_denominator: int = 8
+    terminal_anneal_final_temperature: float = 1.0
 
 
 METHODS = [
@@ -224,7 +225,7 @@ def choose_raw_direction(
             step_size=step_size,
         )
 
-    if method.name == "contact_preserving_soft_cone":
+    if method.name in {"contact_preserving_soft_cone", "contact_preserving_entropy_annealed"}:
         if x is None or step_size is None:
             raise ValueError("contact_preserving_soft_cone needs x and step_size")
         return choose_contact_preserving_direction(
@@ -379,6 +380,22 @@ def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
     return out
 
 
+def sharpen_distribution(x: jax.Array, temperature: float) -> jax.Array:
+    temperature = max(float(temperature), 1e-6)
+    if temperature >= 1.0:
+        return x
+    logits = jnp.log(jnp.clip(x, 1e-8, 1.0)) / temperature
+    return jax.nn.softmax(logits, axis=-1)
+
+
+def terminal_anneal_temperature(method: MethodSpec, step: int, steps: int) -> float:
+    final_temperature = float(method.terminal_anneal_final_temperature)
+    if final_temperature >= 1.0:
+        return 1.0
+    progress = float(step + 1) / float(max(steps, 1))
+    return 1.0 - progress * (1.0 - final_temperature)
+
+
 def run_single_method_with_terminal(
     *,
     method: MethodSpec,
@@ -419,7 +436,10 @@ def run_single_method_with_terminal(
             x=x,
             step_size=step_size,
         )
-        x_new, actual_update = projected_update(x, raw_direction, step_size)
+        x_projected, projected_update_value = projected_update(x, raw_direction, step_size)
+        anneal_temperature = terminal_anneal_temperature(method, step, steps)
+        x_new = sharpen_distribution(x_projected, anneal_temperature)
+        actual_update = x_new - x
 
         directional = {
             f"dir_{name}": flatten_dot(grad, actual_update)
@@ -434,13 +454,17 @@ def run_single_method_with_terminal(
             "method_max_aux_harms": method.max_aux_harms,
             "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
             "method_cone_denominator": method.cone_denominator,
+            "method_terminal_anneal_final_temperature": method.terminal_anneal_final_temperature,
             "seed": seed,
             "step": step,
+            "terminal_anneal_temperature": anneal_temperature,
             "oracle_harm_rate": float(np.mean(harms)),
             "worst_oracle_directional_derivative": max(directional.values()),
             "mean_oracle_descent": float(np.mean(list(directional.values()))),
             "step_norm": grad_norm(actual_update),
+            "projected_step_norm": grad_norm(projected_update_value),
             "sequence_entropy": entropy(x),
+            "sequence_entropy_after": entropy(x_new),
             "sequence_entropy_delta": entropy(x_new) - entropy(x),
         }
         row.update({f"loss_{name}": value for name, value in values.items()})
@@ -493,7 +517,7 @@ def summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     np.mean([r["worst_oracle_directional_derivative"] for r in method_rows])
                 ),
                 "mean_step_norm": float(np.mean([r["step_norm"] for r in method_rows])),
-                "mean_final_entropy": float(np.mean([r["sequence_entropy"] for r in final_rows])),
+                "mean_final_entropy": float(np.mean([r.get("sequence_entropy_after", r["sequence_entropy"]) for r in final_rows])),
                 "mean_final_hydrophobic_loss": float(np.mean([r["loss_hydrophobic_contact"] for r in final_rows])),
                 "mean_final_solubility_loss": float(np.mean([r["loss_solubility_limit"] for r in final_rows])),
                 "mean_final_charge_loss": float(np.mean([r["loss_charge_target"] for r in final_rows])),

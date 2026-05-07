@@ -57,6 +57,24 @@ METHODS = [
         min_primary_descent_ratio=0.60,
         cone_denominator=10,
     ),
+    MethodSpec(
+        "M7d",
+        "contact_preserving_entropy_annealed",
+        aux_slack=0.08,
+        max_aux_harms=1,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+        terminal_anneal_final_temperature=0.5,
+    ),
+    MethodSpec(
+        "M7e",
+        "contact_preserving_entropy_annealed",
+        aux_slack=0.08,
+        max_aux_harms=1,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+        terminal_anneal_final_temperature=0.25,
+    ),
 ]
 
 
@@ -214,6 +232,7 @@ def score_candidate(
         "method_max_aux_harms": method.max_aux_harms,
         "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
         "method_cone_denominator": method.cone_denominator,
+        "method_terminal_anneal_final_temperature": method.terminal_anneal_final_temperature,
         "seed": seed,
         "score_mode": score_mode,
         "candidate_sample_index": sample_index,
@@ -340,7 +359,7 @@ def summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 np.mean([r["worst_oracle_directional_derivative"] for r in method_rows])
             ),
             "mean_step_norm": float(np.mean([r["step_norm"] for r in method_rows])),
-            "mean_final_entropy": float(np.mean([r["sequence_entropy"] for r in final_rows])),
+            "mean_final_entropy": float(np.mean([r.get("sequence_entropy_after", r["sequence_entropy"]) for r in final_rows])),
         }
         for key in sorted(k for k in final_rows[0] if k.startswith("loss_")):
             summary[f"mean_final_{key}"] = float(np.mean([r[key] for r in final_rows]))
