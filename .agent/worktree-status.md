@@ -18,6 +18,8 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - ACT-007: Prepare durable Boltz checkpoint cache.
 - ACT-010: Tune contact-preserving updates and discretization diagnostics.
 - ACT-011: Add discretization-aware candidate handoff.
+- ACT-015: Test CEM or constrained discrete repair.
+- ACT-016: Implement QP-style constrained update.
 - CLM-001: Holdout-gradient insensitivity signature.
 - CLM-002: Cross-oracle robustness metric design.
 - EVD-003: In silico filter metric taxonomy.
@@ -31,13 +33,16 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - Intended Quest worktree path: `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`.
 - Initial deliverable is a dry-run-safe pilot runner that records provenance before any expensive oracle calls.
 - Current experiment scope excludes BoltzGen generation/ranking and external BindCraft/BoltzDesign1 baselines; the branch should compare Mosaic-internal update rules.
-- Latest pushed commit: `a0e3861`.
-- Latest result: ACT-010 H100 run `phase0_protenix_update_geometry_f092264_20260507T042412Z` completed successfully and is summarized in `docs/reports/phase0_act010_contact_sweep_2026-05-07.md`.
-- Interpretation: M7c aggressive contact-preserving update is best under soft terminal scoring, but argmax loses most of the gain. The next branch task is a discretization-aware candidate handoff diagnostic, not another pure slack sweep.
+- Latest pushed commit: `d8b1489`.
+- ACT-010 result: H100 run `phase0_protenix_update_geometry_f092264_20260507T042412Z` completed successfully and is summarized in `docs/reports/phase0_act010_contact_sweep_2026-05-07.md`. M7c aggressive contact-preserving update is best under soft terminal scoring, but argmax loses most of the gain.
 - ACT-011 implementation commit: `09ed71d`.
 - ACT-011 result: H100 run `phase0_protenix_update_geometry_09ed71d_20260507T045421Z` completed successfully and is summarized in `docs/reports/phase0_act011_topk_handoff_2026-05-07.md`. M7c top-k sample/rerank beats M7c argmax and naive weighted top-k/argmax on discrete interface metrics under matched sample budget.
 - ACT-012 implementation commit: `cc6864e`.
 - ACT-012 result: H100 run `phase0_protenix_update_geometry_cc6864e_20260507T051752Z` completed successfully and is summarized in `docs/reports/phase0_act012_topk_sensitivity_2026-05-07.md`. M7c improves with sample budget, but M3 naive weighted is best across tested budgets and rerank metrics.
+- ACT-013 result: lower terminal sampling temperature, especially `0.25`, revives M7c top-k candidate quality and is summarized in `docs/reports/phase0_act013_terminal_temperature_2026-05-07.md`.
+- ACT-014 result: naive post-update entropy annealing lowers entropy but worsens update safety and candidate quality; summarized in `docs/reports/phase0_act014_entropy_annealing_2026-05-07.md`.
+- ACT-015A result: naive CEM / elite sampling lowers entropy but fails under matched 24-candidate budget; summarized in `docs/reports/phase0_act015a_cem_2026-05-07.md`.
+- Interpretation: gradient-guided relaxed optimization plus cold top-k handoff remains useful, but naive optimizer-side collapse mechanisms are harmful. The next branch task is ACT-015B QP-style constrained update.
 
 ## Exit Condition
 
@@ -47,4 +52,4 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - A100/H100 smoke result is recorded or explicitly blocked by queue availability.
 - M0/M1/M3 update-level logging is ready for a Phase 0 diagnostic run.
 - Soft and argmax candidate scoring are separated in the output schema.
-- ACT-012 blocks immediate scale-up; next exit gate is revising the terminal distribution or objective, such as entropy annealing, lower sampling temperature, or straight-through hard candidate scoring.
+- ACT-015A blocks naive CEM scale-up; next exit gate is a QP-style constrained update that beats M3 top-k under matched hard-candidate budget while preserving contact descent and auxiliary harm control.
