@@ -7,7 +7,7 @@ Default sibling worktree root: `../code-worktrees/`
 ## Active Worktrees
 
 - `code/` on `main`: upstream Mosaic baseline plus SCH-BinderDesign project scaffolding.
-- `../code-worktrees/baseline-phase0-mosaic-baselines` on `baseline/phase0-mosaic-baselines`: Phase 0 Mosaic-internal baseline and reduced Protenix update-geometry experiments. Latest pushed commit `25fecb3`; latest result ACT-017 QP tuning sweep.
+- `../code-worktrees/baseline-phase0-mosaic-baselines` on `baseline/phase0-mosaic-baselines`: Phase 0 Mosaic-internal baseline and reduced Protenix update-geometry experiments. Latest pushed commit `c2ec531`; latest result ACT-018 QP fallback/grid revision.
 
 ## Planned Branches
 
