@@ -154,6 +154,9 @@ class MethodSpec:
     min_primary_descent_ratio: float = 0.0
     cone_denominator: int = 8
     terminal_anneal_final_temperature: float = 1.0
+    hardening_threshold: float = 0.0
+    hardening_max_fraction: float = 0.0
+    hardening_sample_count: int = 0
 
 
 METHODS = [
@@ -207,6 +210,9 @@ def choose_raw_direction(
         return -grads[ordered[0]]
 
     if method.name == "naive_weighted":
+        return -sum(weights[name] * grads[name] for name in ordered)
+
+    if is_position_hardening_method(method):
         return -sum(weights[name] * grads[name] for name in ordered)
 
     normed_sum = sum(weights[name] * normalized(grads[name]) for name in ordered)
@@ -550,6 +556,72 @@ def sharpen_distribution(x: jax.Array, temperature: float) -> jax.Array:
     return jax.nn.softmax(logits, axis=-1)
 
 
+def is_position_hardening_method(method: MethodSpec) -> bool:
+    return method.name.startswith("position_hardening_")
+
+
+def apply_frozen_positions(x: jax.Array, frozen_sequence: jax.Array, frozen_mask: jax.Array) -> jax.Array:
+    return jnp.where(frozen_mask[:, None], frozen_sequence, x)
+
+
+def choose_harden_positions(
+    *,
+    method: MethodSpec,
+    x: jax.Array,
+    grads: dict[str, jax.Array],
+    frozen_mask: jax.Array,
+    key: jax.Array,
+) -> tuple[jax.Array, jax.Array, dict[str, float]]:
+    available = jnp.logical_not(frozen_mask)
+    max_prob = jnp.max(x, axis=-1)
+    top_values, top_indices = jax.lax.top_k(x, 2)
+    top1 = top_values[:, 0]
+    top2 = top_values[:, 1]
+    margin = top1 - top2
+    threshold = float(method.hardening_threshold)
+
+    if method.name == "position_hardening_probability":
+        score = max_prob
+        eligible = available & (max_prob >= threshold)
+    elif method.name == "position_hardening_consensus":
+        sample_count = max(1, int(method.hardening_sample_count))
+        sample_keys = jax.random.split(key, sample_count)
+
+        def sample_once(sample_key: jax.Array) -> jax.Array:
+            return jax.random.categorical(sample_key, jnp.log(jnp.clip(x, 1e-8, 1.0)), axis=-1)
+
+        samples = jax.vmap(sample_once)(sample_keys)
+        consensus = jnp.mean(samples == top_indices[None, :, 0], axis=0)
+        score = consensus
+        eligible = available & (consensus >= threshold)
+    elif method.name == "position_hardening_margin_lowsensitivity":
+        grad_stack = jnp.stack([jnp.linalg.norm(grad, axis=-1) for grad in grads.values()])
+        sensitivity = jnp.mean(grad_stack, axis=0)
+        sensitivity = sensitivity / (jnp.mean(sensitivity) + 1e-8)
+        score = margin / (1.0 + sensitivity)
+        eligible = available & (margin >= threshold) & (sensitivity <= 1.0)
+    else:
+        raise ValueError(f"Unknown hardening method: {method.name}")
+
+    max_new = max(1, int(math.ceil(float(method.hardening_max_fraction) * x.shape[0])))
+    score = jnp.where(eligible, score, -jnp.inf)
+    selected_order = jnp.argsort(score)[::-1]
+    selected_order = selected_order[:max_new]
+    selected_scores = score[selected_order]
+    selected_mask = jnp.zeros_like(frozen_mask).at[selected_order].set(jnp.isfinite(selected_scores))
+    new_frozen_mask = frozen_mask | selected_mask
+    new_tokens = jax.nn.one_hot(jnp.argmax(x, axis=-1), x.shape[-1])
+    hardened = jnp.where(new_frozen_mask[:, None], new_tokens, x)
+    diagnostics = {
+        "hardening_new_positions": float(jnp.sum(selected_mask)),
+        "hardening_total_positions": float(jnp.sum(new_frozen_mask)),
+        "hardening_fraction": float(jnp.mean(new_frozen_mask.astype(jnp.float32))),
+        "hardening_mean_max_prob": float(jnp.mean(max_prob)),
+        "hardening_mean_margin": float(jnp.mean(margin)),
+    }
+    return hardened, new_frozen_mask, diagnostics
+
+
 def terminal_anneal_temperature(method: MethodSpec, step: int, steps: int) -> float:
     final_temperature = float(method.terminal_anneal_final_temperature)
     if final_temperature >= 1.0:
@@ -575,6 +647,8 @@ def run_single_method_with_terminal(
         axis=-1,
     )
     rows = []
+    frozen_mask = jnp.zeros((binder_length,), dtype=bool)
+    frozen_sequence = jnp.zeros_like(x)
 
     for step in range(steps):
         step_key = jax.random.fold_in(key, step)
@@ -601,6 +675,23 @@ def run_single_method_with_terminal(
         x_projected, projected_update_value = projected_update(x, raw_direction, step_size)
         anneal_temperature = terminal_anneal_temperature(method, step, steps)
         x_new = sharpen_distribution(x_projected, anneal_temperature)
+        hardening_diagnostics = {
+            "hardening_new_positions": 0.0,
+            "hardening_total_positions": float(jnp.sum(frozen_mask)),
+            "hardening_fraction": float(jnp.mean(frozen_mask.astype(jnp.float32))),
+            "hardening_mean_max_prob": float(jnp.mean(jnp.max(x_new, axis=-1))),
+            "hardening_mean_margin": float(jnp.mean(jax.lax.top_k(x_new, 2)[0][:, 0] - jax.lax.top_k(x_new, 2)[0][:, 1])),
+        }
+        if is_position_hardening_method(method):
+            x_new, frozen_mask, hardening_diagnostics = choose_harden_positions(
+                method=method,
+                x=x_new,
+                grads=grads,
+                frozen_mask=frozen_mask,
+                key=jax.random.fold_in(step_key, 9_001),
+            )
+            frozen_sequence = jnp.where(frozen_mask[:, None], x_new, frozen_sequence)
+        x_new = apply_frozen_positions(x_new, frozen_sequence, frozen_mask)
         actual_update = x_new - x
 
         directional = {
@@ -620,6 +711,9 @@ def run_single_method_with_terminal(
             "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
             "method_cone_denominator": method.cone_denominator,
             "method_terminal_anneal_final_temperature": method.terminal_anneal_final_temperature,
+            "method_hardening_threshold": method.hardening_threshold,
+            "method_hardening_max_fraction": method.hardening_max_fraction,
+            "method_hardening_sample_count": method.hardening_sample_count,
             "seed": seed,
             "step": step,
             "terminal_anneal_temperature": anneal_temperature,
@@ -636,6 +730,7 @@ def run_single_method_with_terminal(
             "sequence_entropy_after": entropy(x_new),
             "sequence_entropy_delta": entropy(x_new) - entropy(x),
         }
+        row.update(hardening_diagnostics)
         row.update({f"loss_{name}": value for name, value in values.items()})
         row.update(directional)
         row.update(cosines)

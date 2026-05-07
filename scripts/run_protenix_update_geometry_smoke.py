@@ -139,6 +139,25 @@ METHODS = [
         min_primary_descent_ratio=0.60,
         cone_denominator=20,
     ),
+    MethodSpec(
+        "M9a",
+        "position_hardening_probability",
+        hardening_threshold=0.42,
+        hardening_max_fraction=0.20,
+    ),
+    MethodSpec(
+        "M9b",
+        "position_hardening_consensus",
+        hardening_threshold=0.75,
+        hardening_max_fraction=0.20,
+        hardening_sample_count=8,
+    ),
+    MethodSpec(
+        "M9c",
+        "position_hardening_margin_lowsensitivity",
+        hardening_threshold=0.12,
+        hardening_max_fraction=0.20,
+    ),
 ]
 
 
@@ -297,6 +316,9 @@ def score_candidate(
         "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
         "method_cone_denominator": method.cone_denominator,
         "method_terminal_anneal_final_temperature": method.terminal_anneal_final_temperature,
+        "method_hardening_threshold": method.hardening_threshold,
+        "method_hardening_max_fraction": method.hardening_max_fraction,
+        "method_hardening_sample_count": method.hardening_sample_count,
         "seed": seed,
         "score_mode": score_mode,
         "candidate_sample_index": sample_index,
