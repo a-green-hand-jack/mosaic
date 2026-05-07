@@ -21,7 +21,7 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline worktree result is ACT-019 gradual hardening at pushed commit `b92238c`.
+Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline worktree result is ACT-020 warm-started CEM at pushed commit `6013a6f`.
 
 ## Blockers
 
@@ -32,6 +32,6 @@ Continue Phase 0 reduced Protenix update-geometry experiments. Latest baseline w
 - Baseline branch: `baseline/phase0-mosaic-baselines`
 - Local worktree: `/Users/jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
 - Quest worktree: `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`
-- Latest pushed commit: `b92238c`
-- Latest report: `docs/reports/phase0_act019_gradual_hardening_2026-05-07.md`
-- Result: naive early position hardening lowers entropy but increases update harm and worsens soft/argmax quality; next method should be warm-started hard-candidate optimization.
+- Latest pushed commit: `6013a6f`
+- Latest report: `docs/reports/phase0_act020_warm_cem_2026-05-07.md`
+- Result: warm-started CEM repairs final argmax quality, especially `WCEMp_M7c`, but source M8a/M7c top-k remains stronger at matched budget 24; next method should preserve source diversity during warm CEM.
