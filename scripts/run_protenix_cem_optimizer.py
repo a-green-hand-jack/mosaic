@@ -36,6 +36,8 @@ METRIC_DIRECTIONS = {
 CEM_METHODS = [
     MethodSpec("CEMp", "cem_bt_pae"),
     MethodSpec("CEMc", "cem_contact"),
+    MethodSpec("WCEMp", "warm_cem_bt_pae"),
+    MethodSpec("WCEMc", "warm_cem_contact"),
 ]
 
 
@@ -51,9 +53,13 @@ def sort_key_for_metric(row: dict[str, Any], metric: str) -> float:
 
 
 def cem_metric(method: MethodSpec) -> str:
-    if method.method_id == "CEMc":
+    if method.method_id.endswith("c"):
         return "contact"
     return "bt_pae"
+
+
+def cem_is_warm(method: MethodSpec) -> bool:
+    return method.method_id.startswith("W")
 
 
 def smooth_elite_distribution(elites: list[jax.Array], min_uniform_mix: float) -> jax.Array:
@@ -104,12 +110,31 @@ def run_cem_method(
     method: MethodSpec,
     seed: int,
     args: argparse.Namespace,
+    init_distribution: jax.Array | None = None,
+    init_method: MethodSpec | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     key = jax.random.key(seed + 50_000)
-    distribution = jax.nn.softmax(
-        args.init_temperature * jax.random.gumbel(key, shape=(args.binder_length, len(TOKENS))),
-        axis=-1,
-    )
+    if init_distribution is None:
+        distribution = jax.nn.softmax(
+            args.init_temperature * jax.random.gumbel(key, shape=(args.binder_length, len(TOKENS))),
+            axis=-1,
+        )
+        init_method_id = "random"
+        init_method_name = "random_gumbel"
+    else:
+        uniform = jnp.full_like(init_distribution, 1.0 / len(TOKENS))
+        distribution = (1.0 - args.warm_start_uniform_mix) * init_distribution + args.warm_start_uniform_mix * uniform
+        distribution = distribution / jnp.sum(distribution, axis=-1, keepdims=True)
+        init_method_id = init_method.method_id if init_method is not None else "unknown"
+        init_method_name = init_method.name if init_method is not None else "unknown"
+
+    method_for_rows = method
+    if init_distribution is not None and init_method is not None:
+        method_for_rows = MethodSpec(
+            f"{method.method_id}_{init_method.method_id}",
+            f"{method.name}_from_{init_method.method_id}",
+        )
+
     candidate_rows: list[dict[str, Any]] = []
     round_rows: list[dict[str, Any]] = []
     ranking_metric = cem_metric(method)
@@ -130,7 +155,7 @@ def run_cem_method(
                 features=features,
                 sequence_losses=sequence_losses,
                 candidate=candidate,
-                method=method,
+                method=method_for_rows,
                 seed=seed,
                 sample_index=sample_index,
                 round_index=round_index,
@@ -138,6 +163,9 @@ def run_cem_method(
                 args=args,
             )
             row["cem_ranking_metric"] = ranking_metric
+            row["cem_init_method_id"] = init_method_id
+            row["cem_init_method"] = init_method_name
+            row["cem_init_entropy"] = entropy(distribution) if round_index == 0 and local_index == 0 else ""
             scored.append((row, candidate))
             candidate_rows.append(row)
 
@@ -152,11 +180,13 @@ def run_cem_method(
         best_row = elite[0][0]
         round_rows.append(
             {
-                "method_id": method.method_id,
-                "method": method.name,
+                "method_id": method_for_rows.method_id,
+                "method": method_for_rows.name,
                 "seed": seed,
                 "cem_round": round_index,
                 "cem_ranking_metric": ranking_metric,
+                "cem_init_method_id": init_method_id,
+                "cem_init_method": init_method_name,
                 "round_start_entropy": round_start_entropy,
                 "round_end_entropy": entropy(distribution),
                 "elite_count": args.cem_elite_count,
@@ -174,7 +204,7 @@ def run_cem_method(
         features=features,
         sequence_losses=sequence_losses,
         candidate=final_argmax,
-        method=method,
+        method=method_for_rows,
         seed=seed,
         sample_index=args.cem_rounds * args.cem_samples_per_round,
         round_index=args.cem_rounds,
@@ -183,6 +213,9 @@ def run_cem_method(
     )
     final_row["score_mode"] = "argmax"
     final_row["cem_ranking_metric"] = ranking_metric
+    final_row["cem_init_method_id"] = init_method_id
+    final_row["cem_init_method"] = init_method_name
+    final_row["cem_init_entropy"] = entropy(distribution)
     candidate_rows.append(final_row)
     return candidate_rows, round_rows
 
@@ -197,13 +230,13 @@ def selected_methods(method_ids: str) -> list[MethodSpec]:
 
 def write_report(path: Path, payload: dict[str, Any]) -> None:
     lines = [
-        "# Phase 0 ACT-015A CEM Optimizer",
+        "# Phase 0 CEM Optimizer",
         "",
         f"Run ID: `{payload['run_id']}`",
         "",
         "## Scope",
         "",
-        "This run tests whether cold top-k candidate selection can be internalized as a small CEM / elite-sampling optimizer. It compares CEM variants against matched-budget M3/M7c top-k baselines in the reduced ProtenixMini setting.",
+        "This run tests whether cold top-k candidate selection can be internalized as a small CEM / elite-sampling optimizer. Warm-started CEM variants initialize from baseline terminal distributions instead of random relaxed distributions.",
         "",
         "## Candidate Summary",
         "",
@@ -222,13 +255,13 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
             "",
             "## Round Summary",
             "",
-            "| Method ID | Seed | Round | Metric | Start entropy | End entropy | Best BT PAE | Best BT ipTM | Best pLDDT | Best contact |",
-            "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|",
+            "| Method ID | Init | Seed | Round | Metric | Start entropy | End entropy | Best BT PAE | Best BT ipTM | Best pLDDT | Best contact |",
+            "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in payload["cem_round_summary"]:
         lines.append(
-            "| {method_id} | {seed} | {cem_round} | {cem_ranking_metric} | {round_start_entropy:.4f} | {round_end_entropy:.4f} | {best_candidate_bt_pae:.4f} | {best_candidate_bt_iptm:.4f} | {best_candidate_plddt:.4f} | {best_candidate_contact:.4f} |".format(
+            "| {method_id} | {cem_init_method_id} | {seed} | {cem_round} | {cem_ranking_metric} | {round_start_entropy:.4f} | {round_end_entropy:.4f} | {best_candidate_bt_pae:.4f} | {best_candidate_bt_iptm:.4f} | {best_candidate_plddt:.4f} | {best_candidate_contact:.4f} |".format(
                 **row
             )
         )
@@ -272,6 +305,7 @@ def main() -> None:
     parser.add_argument("--cem-elite-count", type=int, default=2)
     parser.add_argument("--cem-update-rate", type=float, default=0.7)
     parser.add_argument("--cem-min-uniform-mix", type=float, default=0.05)
+    parser.add_argument("--warm-start-uniform-mix", type=float, default=0.02)
     parser.add_argument("--output-dir", type=Path, default=Path("docs/results"))
     parser.add_argument("--report-dir", type=Path, default=Path("docs/reports"))
     args = parser.parse_args()
@@ -281,6 +315,7 @@ def main() -> None:
     step_rows = []
     candidate_rows = []
     round_rows = []
+    terminal_by_seed_method: dict[tuple[int, str], jax.Array] = {}
 
     baseline_methods = selected_methods(args.baseline_method_ids)
     requested_cem_ids = {item.strip() for item in args.cem_method_ids.split(",") if item.strip()}
@@ -301,6 +336,7 @@ def main() -> None:
                 init_temperature=args.init_temperature,
             )
             step_rows.extend(method_rows)
+            terminal_by_seed_method[(seed, method.method_id)] = terminal_sequence
             for score_mode in ("soft", "argmax"):
                 candidate_rows.append(
                     score_candidate(
@@ -331,16 +367,31 @@ def main() -> None:
                 )
 
         for method in cem_methods:
-            rows, cem_rounds = run_cem_method(
-                model=model,
-                features=features,
-                sequence_losses=sequence_losses,
-                method=method,
-                seed=seed,
-                args=args,
-            )
-            candidate_rows.extend(rows)
-            round_rows.extend(cem_rounds)
+            if cem_is_warm(method):
+                for init_method in baseline_methods:
+                    rows, cem_rounds = run_cem_method(
+                        model=model,
+                        features=features,
+                        sequence_losses=sequence_losses,
+                        method=method,
+                        seed=seed,
+                        args=args,
+                        init_distribution=terminal_by_seed_method[(seed, init_method.method_id)],
+                        init_method=init_method,
+                    )
+                    candidate_rows.extend(rows)
+                    round_rows.extend(cem_rounds)
+            else:
+                rows, cem_rounds = run_cem_method(
+                    model=model,
+                    features=features,
+                    sequence_losses=sequence_losses,
+                    method=method,
+                    seed=seed,
+                    args=args,
+                )
+                candidate_rows.extend(rows)
+                round_rows.extend(cem_rounds)
 
     metadata = git_metadata()
     run_id = "phase0_protenix_cem_{}_{}".format(
