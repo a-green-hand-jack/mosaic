@@ -141,6 +141,22 @@ def one_hot_argmax(sequence: jax.Array) -> jax.Array:
     return jax.nn.one_hot(jnp.argmax(sequence, axis=-1), len(TOKENS))
 
 
+def topk_sample_one_hot(
+    sequence: jax.Array,
+    *,
+    key: jax.Array,
+    top_k: int,
+    temperature: float,
+) -> jax.Array:
+    top_k = max(1, min(int(top_k), len(TOKENS)))
+    temperature = max(float(temperature), 1e-6)
+    values, indices = jax.lax.top_k(sequence, top_k)
+    logits = jnp.log(jnp.clip(values, 1e-8, 1.0)) / temperature
+    sampled_local = jax.random.categorical(key, logits=logits, axis=-1)
+    sampled = jnp.take_along_axis(indices, sampled_local[:, None], axis=-1).squeeze(-1)
+    return jax.nn.one_hot(sampled, len(TOKENS))
+
+
 def sequence_string(sequence: jax.Array) -> str:
     indices = np.asarray(jnp.argmax(sequence, axis=-1))
     return "".join(TOKENS[int(index)] for index in indices)
@@ -165,16 +181,24 @@ def score_candidate(
     method: MethodSpec,
     seed: int,
     score_mode: str,
+    sample_index: int,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
     if score_mode == "argmax":
         candidate = one_hot_argmax(terminal_sequence)
     elif score_mode == "soft":
         candidate = terminal_sequence
+    elif score_mode == "topk_sample":
+        candidate = topk_sample_one_hot(
+            terminal_sequence,
+            key=jax.random.key(seed + 2_000_000 + sample_index),
+            top_k=args.candidate_sample_top_k,
+            temperature=args.candidate_sample_temperature,
+        )
     else:
         raise ValueError(score_mode)
 
-    key = jax.random.key(seed + 1_000_000)
+    key = jax.random.key(seed + 1_000_000 + sample_index)
     output = model.model_output(
         PSSM=candidate,
         features=features,
@@ -192,6 +216,9 @@ def score_candidate(
         "method_cone_denominator": method.cone_denominator,
         "seed": seed,
         "score_mode": score_mode,
+        "candidate_sample_index": sample_index,
+        "candidate_sample_top_k": args.candidate_sample_top_k if score_mode == "topk_sample" else 0,
+        "candidate_sample_temperature": args.candidate_sample_temperature if score_mode == "topk_sample" else 0.0,
         "sequence": sequence_string(candidate),
         "sequence_entropy": entropy(candidate),
     }
@@ -219,6 +246,44 @@ def score_candidate(
             row[f"candidate_{name}_{aux_name}"] = aux_value
 
     return row
+
+
+def metric_value(row: dict[str, Any], metric: str) -> float:
+    metric_map = {
+        "bt_pae": ("candidate_bt_pae", "min"),
+        "bt_iptm": ("candidate_bt_iptm", "max"),
+        "ipsae_min": ("candidate_ipsae_min", "max"),
+        "contact": ("candidate_loss_protenix_contact", "min"),
+    }
+    key, _direction = metric_map[metric]
+    return float(row[key])
+
+
+def is_better_candidate(left: dict[str, Any], right: dict[str, Any], metric: str) -> bool:
+    metric_map = {
+        "bt_pae": ("candidate_bt_pae", "min"),
+        "bt_iptm": ("candidate_bt_iptm", "max"),
+        "ipsae_min": ("candidate_ipsae_min", "max"),
+        "contact": ("candidate_loss_protenix_contact", "min"),
+    }
+    _key, direction = metric_map[metric]
+    left_value = metric_value(left, metric)
+    right_value = metric_value(right, metric)
+    if direction == "min":
+        return left_value < right_value
+    return left_value > right_value
+
+
+def best_candidate_rows(rows: list[dict[str, Any]], metric: str) -> list[dict[str, Any]]:
+    best: dict[tuple[str, str, str, int], dict[str, Any]] = {}
+    for row in rows:
+        key = (row["method_id"], row["method"], row["score_mode"], row["seed"])
+        if key not in best or is_better_candidate(row, best[key], metric):
+            best[key] = row | {
+                "candidate_selection_metric": metric,
+                "candidate_selected_metric_value": metric_value(row, metric),
+            }
+    return list(best.values())
 
 
 def summarize_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -320,6 +385,24 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
                     **row
                 )
             )
+    if payload.get("candidate_best_summary"):
+        lines.extend(
+            [
+                "",
+                "## Best-Per-Seed Candidate Scores",
+                "",
+                f"Selection metric: `{payload['args']['candidate_best_metric']}`",
+                "",
+                "| Method ID | Method | Score mode | Selected | pLDDT | Binder-target PAE | Binder-target ipTM | IPSAE min | Contact loss | Trigram loss |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for row in payload["candidate_best_summary"]:
+            lines.append(
+                "| {method_id} | {method} | {score_mode} | {num_candidates} | {mean_candidate_plddt:.4f} | {mean_candidate_bt_pae:.4f} | {mean_candidate_bt_iptm:.4f} | {mean_candidate_ipsae_min:.4f} | {mean_candidate_loss_protenix_contact:.4f} | {mean_candidate_loss_trigram_naturalness:.4f} |".format(
+                    **row
+                )
+            )
     lines.extend(
         [
             "",
@@ -349,6 +432,20 @@ def main() -> None:
     parser.add_argument("--trigram-path", type=Path, default=Path("trigram_seg.pkl"))
     parser.add_argument("--protenix-cache", type=Path, default=Path("/projects/p32572/Jieke/.cache/protenix"))
     parser.add_argument("--candidate-score-mode", choices=["argmax", "soft", "both"], default="argmax")
+    parser.add_argument("--candidate-topk-samples", type=int, default=0)
+    parser.add_argument("--candidate-sample-top-k", type=int, default=4)
+    parser.add_argument("--candidate-sample-temperature", type=float, default=1.0)
+    parser.add_argument(
+        "--candidate-best-metric",
+        choices=["bt_pae", "bt_iptm", "ipsae_min", "contact"],
+        default="bt_pae",
+    )
+    parser.add_argument(
+        "--method-ids",
+        type=str,
+        default="",
+        help="Comma-separated MethodSpec IDs to run. Empty means all methods.",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("docs/results"))
     parser.add_argument("--report-dir", type=Path, default=Path("docs/reports"))
     args = parser.parse_args()
@@ -357,9 +454,13 @@ def main() -> None:
     weights = {name: 1.0 for name in losses}
     rows = []
     candidate_rows = []
+    requested_method_ids = {item.strip() for item in args.method_ids.split(",") if item.strip()}
+    methods = [method for method in METHODS if not requested_method_ids or method.method_id in requested_method_ids]
+    if not methods:
+        raise ValueError(f"No methods selected by --method-ids={args.method_ids!r}")
     score_modes = ["argmax", "soft"] if args.candidate_score_mode == "both" else [args.candidate_score_mode]
     for seed in range(args.seed_start, args.seed_start + args.num_seeds):
-        for method in METHODS:
+        for method in methods:
             method_rows, terminal_sequence = run_single_method_with_terminal(
                 method=method,
                 losses=losses,
@@ -381,6 +482,21 @@ def main() -> None:
                         method=method,
                         seed=seed,
                         score_mode=score_mode,
+                        sample_index=0,
+                        args=args,
+                    )
+                )
+            for sample_index in range(args.candidate_topk_samples):
+                candidate_rows.append(
+                    score_candidate(
+                        model=model,
+                        features=features,
+                        sequence_losses=sequence_losses,
+                        terminal_sequence=terminal_sequence,
+                        method=method,
+                        seed=seed,
+                        score_mode="topk_sample",
+                        sample_index=sample_index,
                         args=args,
                     )
                 )
@@ -399,9 +515,12 @@ def main() -> None:
             for key, value in vars(args).items()
         },
         "oracles": list(losses),
-        "methods": [method.__dict__ for method in METHODS],
+        "methods": [method.__dict__ for method in methods],
         "summary": summarize(rows),
         "candidate_summary": summarize_candidates(candidate_rows),
+        "candidate_best_summary": summarize_candidates(
+            best_candidate_rows(candidate_rows, args.candidate_best_metric)
+        ),
     }
 
     json_path = args.output_dir / f"{run_id}.json"
@@ -423,6 +542,7 @@ def main() -> None:
                 "report": str(report_path),
                 "summary": payload["summary"],
                 "candidate_summary": payload["candidate_summary"],
+                "candidate_best_summary": payload["candidate_best_summary"],
             },
             indent=2,
         )
