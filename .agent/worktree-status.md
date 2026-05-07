@@ -34,6 +34,8 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - Latest pushed commit: `a0e3861`.
 - Latest result: ACT-010 H100 run `phase0_protenix_update_geometry_f092264_20260507T042412Z` completed successfully and is summarized in `docs/reports/phase0_act010_contact_sweep_2026-05-07.md`.
 - Interpretation: M7c aggressive contact-preserving update is best under soft terminal scoring, but argmax loses most of the gain. The next branch task is a discretization-aware candidate handoff diagnostic, not another pure slack sweep.
+- ACT-011 implementation commit: `09ed71d`.
+- ACT-011 result: H100 run `phase0_protenix_update_geometry_09ed71d_20260507T045421Z` completed successfully and is summarized in `docs/reports/phase0_act011_topk_handoff_2026-05-07.md`. M7c top-k sample/rerank beats M7c argmax and naive weighted top-k/argmax on discrete interface metrics under matched sample budget.
 
 ## Exit Condition
 
@@ -43,4 +45,4 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - A100/H100 smoke result is recorded or explicitly blocked by queue availability.
 - M0/M1/M3 update-level logging is ready for a Phase 0 diagnostic run.
 - Soft and argmax candidate scoring are separated in the output schema.
-- ACT-011 decides whether relaxed-sequence gains can survive discrete candidate handoff.
+- ACT-011 top-k handoff has a positive reduced-run signal; next exit gate is sample-budget/rerank-metric sensitivity before scaling.
