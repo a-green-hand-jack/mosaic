@@ -38,6 +38,8 @@ CEM_METHODS = [
     MethodSpec("CEMc", "cem_contact"),
     MethodSpec("WCEMp", "warm_cem_bt_pae"),
     MethodSpec("WCEMc", "warm_cem_contact"),
+    MethodSpec("DWCEMp", "diverse_warm_cem_bt_pae"),
+    MethodSpec("DWCEMc", "diverse_warm_cem_contact"),
 ]
 
 
@@ -59,7 +61,11 @@ def cem_metric(method: MethodSpec) -> str:
 
 
 def cem_is_warm(method: MethodSpec) -> bool:
-    return method.method_id.startswith("W")
+    return method.method_id.startswith(("W", "D"))
+
+
+def cem_is_diverse(method: MethodSpec) -> bool:
+    return method.method_id.startswith("D")
 
 
 def smooth_elite_distribution(elites: list[jax.Array], min_uniform_mix: float) -> jax.Array:
@@ -135,6 +141,10 @@ def run_cem_method(
             f"{method.name}_from_{init_method.method_id}",
         )
 
+    source_distribution = distribution
+    cem_update_rate = args.diverse_cem_update_rate if cem_is_diverse(method) else args.cem_update_rate
+    cem_source_mix = args.diverse_source_mix if cem_is_diverse(method) and init_distribution is not None else 0.0
+
     candidate_rows: list[dict[str, Any]] = []
     round_rows: list[dict[str, Any]] = []
     ranking_metric = cem_metric(method)
@@ -166,6 +176,8 @@ def run_cem_method(
             row["cem_init_method_id"] = init_method_id
             row["cem_init_method"] = init_method_name
             row["cem_init_entropy"] = entropy(distribution) if round_index == 0 and local_index == 0 else ""
+            row["cem_update_rate"] = cem_update_rate
+            row["cem_source_mix"] = cem_source_mix
             scored.append((row, candidate))
             candidate_rows.append(row)
 
@@ -174,7 +186,9 @@ def run_cem_method(
             [candidate for _row, candidate in elite],
             args.cem_min_uniform_mix,
         )
-        distribution = (1.0 - args.cem_update_rate) * distribution + args.cem_update_rate * elite_distribution
+        distribution = (1.0 - cem_update_rate) * distribution + cem_update_rate * elite_distribution
+        if cem_source_mix > 0.0:
+            distribution = (1.0 - cem_source_mix) * distribution + cem_source_mix * source_distribution
         distribution = distribution / jnp.sum(distribution, axis=-1, keepdims=True)
 
         best_row = elite[0][0]
@@ -189,6 +203,8 @@ def run_cem_method(
                 "cem_init_method": init_method_name,
                 "round_start_entropy": round_start_entropy,
                 "round_end_entropy": entropy(distribution),
+                "cem_update_rate": cem_update_rate,
+                "cem_source_mix": cem_source_mix,
                 "elite_count": args.cem_elite_count,
                 "samples_per_round": args.cem_samples_per_round,
                 "best_candidate_bt_pae": best_row["candidate_bt_pae"],
@@ -216,6 +232,8 @@ def run_cem_method(
     final_row["cem_init_method_id"] = init_method_id
     final_row["cem_init_method"] = init_method_name
     final_row["cem_init_entropy"] = entropy(distribution)
+    final_row["cem_update_rate"] = cem_update_rate
+    final_row["cem_source_mix"] = cem_source_mix
     candidate_rows.append(final_row)
     return candidate_rows, round_rows
 
@@ -255,13 +273,13 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
             "",
             "## Round Summary",
             "",
-            "| Method ID | Init | Seed | Round | Metric | Start entropy | End entropy | Best BT PAE | Best BT ipTM | Best pLDDT | Best contact |",
-            "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|",
+            "| Method ID | Init | Seed | Round | Metric | Update | Source mix | Start entropy | End entropy | Best BT PAE | Best BT ipTM | Best pLDDT | Best contact |",
+            "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
     )
     for row in payload["cem_round_summary"]:
         lines.append(
-            "| {method_id} | {cem_init_method_id} | {seed} | {cem_round} | {cem_ranking_metric} | {round_start_entropy:.4f} | {round_end_entropy:.4f} | {best_candidate_bt_pae:.4f} | {best_candidate_bt_iptm:.4f} | {best_candidate_plddt:.4f} | {best_candidate_contact:.4f} |".format(
+            "| {method_id} | {cem_init_method_id} | {seed} | {cem_round} | {cem_ranking_metric} | {cem_update_rate:.3f} | {cem_source_mix:.3f} | {round_start_entropy:.4f} | {round_end_entropy:.4f} | {best_candidate_bt_pae:.4f} | {best_candidate_bt_iptm:.4f} | {best_candidate_plddt:.4f} | {best_candidate_contact:.4f} |".format(
                 **row
             )
         )
@@ -306,6 +324,8 @@ def main() -> None:
     parser.add_argument("--cem-update-rate", type=float, default=0.7)
     parser.add_argument("--cem-min-uniform-mix", type=float, default=0.05)
     parser.add_argument("--warm-start-uniform-mix", type=float, default=0.02)
+    parser.add_argument("--diverse-cem-update-rate", type=float, default=0.3)
+    parser.add_argument("--diverse-source-mix", type=float, default=0.35)
     parser.add_argument("--output-dir", type=Path, default=Path("docs/results"))
     parser.add_argument("--report-dir", type=Path, default=Path("docs/reports"))
     args = parser.parse_args()
