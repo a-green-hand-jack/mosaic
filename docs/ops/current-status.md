@@ -35,4 +35,4 @@ Continue Phase 0 reduced Protenix update-geometry experiments. Latest completed 
 - Latest pushed commit: `960cf60`
 - Latest report: `docs/reports/phase0_act020_warm_cem_2026-05-07.md`
 - Result: warm-started CEM repairs final argmax quality, especially `WCEMp_M7c`, but source M8a/M7c top-k remains stronger at matched budget 24; next method should preserve source diversity during warm CEM.
-- Running/queued: ACT-021 job `7430412` (`sch-act021-anygpu`) is submitted on Quest and pending with reason `Priority`; duplicate H100-only job `7430374` was canceled.
+- Running/queued: ACT-021 job `7452371` (`sch-act021-bf`) is submitted on Quest with backfill-friendly overrides `--gres=gpu:1 --mem=40G --time=01:00:00`; earlier pending jobs `7430374` and `7430412` were canceled.
