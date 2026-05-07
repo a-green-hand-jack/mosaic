@@ -34,7 +34,7 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - Intended Quest worktree path: `/projects/p32572/Jieke/Projects/SCH-BinderDesign/code-worktrees/baseline-phase0-mosaic-baselines`.
 - Initial deliverable is a dry-run-safe pilot runner that records provenance before any expensive oracle calls.
 - Current experiment scope excludes BoltzGen generation/ranking and external BindCraft/BoltzDesign1 baselines; the branch should compare Mosaic-internal update rules.
-- Latest pushed commit: `113c5db`.
+- Latest pushed commit: verify with `git rev-parse --short HEAD` before running new jobs. Latest result-bearing commit is `eb0ca34`; latest ops/status commits are after that in branch history.
 - ACT-010 result: H100 run `phase0_protenix_update_geometry_f092264_20260507T042412Z` completed successfully and is summarized in `docs/reports/phase0_act010_contact_sweep_2026-05-07.md`. M7c aggressive contact-preserving update is best under soft terminal scoring, but argmax loses most of the gain.
 - ACT-011 implementation commit: `09ed71d`.
 - ACT-011 result: H100 run `phase0_protenix_update_geometry_09ed71d_20260507T045421Z` completed successfully and is summarized in `docs/reports/phase0_act011_topk_handoff_2026-05-07.md`. M7c top-k sample/rerank beats M7c argmax and naive weighted top-k/argmax on discrete interface metrics under matched sample budget.
