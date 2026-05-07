@@ -41,7 +41,22 @@ METHODS = [
     MethodSpec("M3", "naive_weighted"),
     MethodSpec("M4", "normalized_weighted"),
     MethodSpec("M6", "soft_cone_correction"),
-    MethodSpec("M7", "contact_preserving_soft_cone"),
+    MethodSpec(
+        "M7a",
+        "contact_preserving_soft_cone",
+        aux_slack=0.0,
+        max_aux_harms=0,
+        min_primary_descent_ratio=0.25,
+    ),
+    MethodSpec("M7b", "contact_preserving_soft_cone"),
+    MethodSpec(
+        "M7c",
+        "contact_preserving_soft_cone",
+        aux_slack=0.08,
+        max_aux_harms=1,
+        min_primary_descent_ratio=0.60,
+        cone_denominator=10,
+    ),
 ]
 
 
@@ -171,6 +186,10 @@ def score_candidate(
     row: dict[str, Any] = {
         "method_id": method.method_id,
         "method": method.name,
+        "method_aux_slack": method.aux_slack,
+        "method_max_aux_harms": method.max_aux_harms,
+        "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
+        "method_cone_denominator": method.cone_denominator,
         "seed": seed,
         "score_mode": score_mode,
         "sequence": sequence_string(candidate),
@@ -213,10 +232,19 @@ def summarize_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         and key not in {"candidate_sequence"}
         and isinstance(rows[0][key], (int, float))
     )
-    for method in sorted({row["method"] for row in rows}):
-        method_rows = [row for row in rows if row["method"] == method]
+    groups = sorted({(row["method_id"], row["method"], row["score_mode"]) for row in rows})
+    for method_id, method, score_mode in groups:
+        method_rows = [
+            row
+            for row in rows
+            if row["method_id"] == method_id
+            and row["method"] == method
+            and row["score_mode"] == score_mode
+        ]
         summary: dict[str, Any] = {
+            "method_id": method_id,
             "method": method,
+            "score_mode": score_mode,
             "num_candidates": len(method_rows),
         }
         for key in metric_keys:
@@ -227,13 +255,19 @@ def summarize_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     summaries = []
-    for method in sorted({row["method"] for row in rows}):
-        method_rows = [row for row in rows if row["method"] == method]
+    groups = sorted({(row["method_id"], row["method"]) for row in rows})
+    for method_id, method in groups:
+        method_rows = [
+            row
+            for row in rows
+            if row["method_id"] == method_id and row["method"] == method
+        ]
         final_rows = []
         for seed in sorted({row["seed"] for row in method_rows}):
             seed_rows = [row for row in method_rows if row["seed"] == seed]
             final_rows.append(max(seed_rows, key=lambda row: row["step"]))
         summary = {
+            "method_id": method_id,
             "method": method,
             "num_rows": len(method_rows),
             "mean_oracle_harm_rate": float(np.mean([r["oracle_harm_rate"] for r in method_rows])),
@@ -261,12 +295,12 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
         "",
         "## Summary",
         "",
-        "| Method | Harm rate | Worst derivative | Step norm | Final entropy | Final Protenix contact loss | Final solubility loss | Final charge loss | Final trigram loss |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Method ID | Method | Harm rate | Worst derivative | Step norm | Final entropy | Final Protenix contact loss | Final solubility loss | Final charge loss | Final trigram loss |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in payload["summary"]:
         lines.append(
-            "| {method} | {mean_oracle_harm_rate:.3f} | {mean_worst_oracle_directional_derivative:.4f} | {mean_step_norm:.4f} | {mean_final_entropy:.3f} | {mean_final_loss_protenix_contact:.4f} | {mean_final_loss_solubility_limit:.4f} | {mean_final_loss_charge_target:.4f} | {mean_final_loss_trigram_naturalness:.4f} |".format(
+            "| {method_id} | {method} | {mean_oracle_harm_rate:.3f} | {mean_worst_oracle_directional_derivative:.4f} | {mean_step_norm:.4f} | {mean_final_entropy:.3f} | {mean_final_loss_protenix_contact:.4f} | {mean_final_loss_solubility_limit:.4f} | {mean_final_loss_charge_target:.4f} | {mean_final_loss_trigram_naturalness:.4f} |".format(
                 **row
             )
         )
@@ -276,13 +310,13 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
                 "",
                 "## Candidate Holdout Scores",
                 "",
-                "| Method | Candidates | pLDDT | Binder-target PAE | Binder-target ipTM | IPSAE min | Contact loss | Trigram loss |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|",
+                "| Method ID | Method | Score mode | Candidates | pLDDT | Binder-target PAE | Binder-target ipTM | IPSAE min | Contact loss | Trigram loss |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for row in payload["candidate_summary"]:
             lines.append(
-                "| {method} | {num_candidates} | {mean_candidate_plddt:.4f} | {mean_candidate_bt_pae:.4f} | {mean_candidate_bt_iptm:.4f} | {mean_candidate_ipsae_min:.4f} | {mean_candidate_loss_protenix_contact:.4f} | {mean_candidate_loss_trigram_naturalness:.4f} |".format(
+                "| {method_id} | {method} | {score_mode} | {num_candidates} | {mean_candidate_plddt:.4f} | {mean_candidate_bt_pae:.4f} | {mean_candidate_bt_iptm:.4f} | {mean_candidate_ipsae_min:.4f} | {mean_candidate_loss_protenix_contact:.4f} | {mean_candidate_loss_trigram_naturalness:.4f} |".format(
                     **row
                 )
             )

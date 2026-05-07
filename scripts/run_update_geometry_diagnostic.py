@@ -149,6 +149,10 @@ class ChargeTarget(LossTerm):
 class MethodSpec:
     method_id: str
     name: str
+    aux_slack: float = 0.02
+    max_aux_harms: int = 1
+    min_primary_descent_ratio: float = 0.0
+    cone_denominator: int = 8
 
 
 METHODS = [
@@ -228,6 +232,10 @@ def choose_raw_direction(
             weights=weights,
             x=x,
             step_size=step_size,
+            aux_slack=method.aux_slack,
+            max_aux_harms=method.max_aux_harms,
+            min_primary_descent_ratio=method.min_primary_descent_ratio,
+            cone_denominator=method.cone_denominator,
         )
 
     raise ValueError(method.name)
@@ -315,13 +323,15 @@ def choose_contact_preserving_direction(
     step_size: float,
     aux_slack: float = 0.02,
     max_aux_harms: int = 1,
+    min_primary_descent_ratio: float = 0.0,
+    cone_denominator: int = 8,
 ) -> jax.Array:
     names = list(grads)
     primary = names[0]
     aux_names = names[1:]
-    candidates = cone_candidates(grads=grads, weights=weights, denominator=8)
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=cone_denominator)
 
-    feasible = []
+    evaluated = []
     fallback = []
     for raw in candidates:
         _, actual_update = projected_update(x, raw, step_size)
@@ -342,17 +352,18 @@ def choose_contact_preserving_direction(
                 raw,
             )
         )
-        if aux_harms <= max_aux_harms and aux_worst <= aux_slack and primary_derivative < 0:
-            feasible.append(
-                (
-                    primary_derivative,
-                    aux_harms,
-                    aux_worst,
-                    -step_norm_value,
-                    raw,
-                )
-            )
+        evaluated.append((primary_derivative, aux_harms, aux_worst, -step_norm_value, raw))
 
+    best_primary_derivative = min(item[0] for item in evaluated)
+    min_allowed_primary = min_primary_descent_ratio * best_primary_derivative
+    feasible = [
+        item
+        for item in evaluated
+        if item[1] <= max_aux_harms
+        and item[2] <= aux_slack
+        and item[0] < 0
+        and item[0] <= min_allowed_primary
+    ]
     if feasible:
         return min(feasible, key=lambda item: item[:-1])[-1]
     return min(fallback, key=lambda item: item[:-1])[-1]
@@ -419,6 +430,10 @@ def run_single_method_with_terminal(
         row = {
             "method_id": method.method_id,
             "method": method.name,
+            "method_aux_slack": method.aux_slack,
+            "method_max_aux_harms": method.max_aux_harms,
+            "method_min_primary_descent_ratio": method.min_primary_descent_ratio,
+            "method_cone_denominator": method.cone_denominator,
             "seed": seed,
             "step": step,
             "oracle_harm_rate": float(np.mean(harms)),
