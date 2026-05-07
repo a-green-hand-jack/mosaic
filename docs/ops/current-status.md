@@ -21,7 +21,7 @@ Quest environment uses uv:
 
 ## Current Focus
 
-Phase 0 method revision after ACT-010 through ACT-015B. Current evidence supports gradient-guided relaxed optimization plus cold top-k handoff as useful, but rules out naive hard-sample CEM from a random relaxed distribution as the next scalable path. ACT-015B QP-grid is partially positive: M8a strongly improves soft terminal interface metrics and top-k BT ipTM, but M3 still wins BT PAE/contact top-k and M8a increases update harm. The next priority is a small QP tuning sweep, not scale-up.
+Phase 0 method revision after ACT-010 through ACT-017. Current evidence supports gradient-guided relaxed optimization plus cold top-k handoff as useful, but rules out naive hard-sample CEM from a random relaxed distribution and simple QP threshold tuning as scalable paths. ACT-017 found that M8c/M8d/M8e do not reduce harm, while M8b gives the best hard top-k BT PAE/ipTM in the reduced run but still exceeds M3 update harm. The next priority is ACT-018: revise QP fallback/candidate search around M8b or implement a hard-candidate optimizer slice.
 
 ## Latest Run
 
@@ -102,6 +102,23 @@ Result summary: naive CEM/elite-sampling successfully lowers entropy but does no
 
 Result summary: QP-grid M8a is promising but not accepted. M8a soft terminal reaches BT PAE 7.0264 and BT ipTM 0.5880, better than M3 soft 8.7660/0.5183. Under budget-8 BT ipTM reranking, M8a top-k reaches 0.4800 versus M3 0.4576. However, M3 still wins budget-8 BT PAE and contact reranking, and M8a has higher update harm than M3. M8b has better harm control but weaker candidates.
 
+## ACT-017 Result
+
+- Commit: `65947b0` for implementation/run; `eb0ca34` for committed results
+- Run ID: `phase0_protenix_update_geometry_65947b0_20260507T091217Z`
+- Server/node: Quest H100 `qgpu3019`
+- Runtime: 16:50 wall-clock, exit status 0
+- Report: `docs/reports/phase0_act017_qp_tuning_2026-05-07.md`
+- Raw artifacts:
+  - `docs/reports/phase0_protenix_update_geometry_65947b0_20260507T091217Z.md`
+  - `docs/results/phase0_protenix_update_geometry_65947b0_20260507T091217Z.json`
+  - `docs/results/phase0_protenix_update_geometry_65947b0_20260507T091217Z_candidates.csv`
+  - `docs/results/phase0_protenix_update_geometry_65947b0_20260507T091217Z_steps.csv`
+  - `docs/results/phase0_protenix_update_geometry_65947b0_20260507T091217Z_topk_sensitivity.md`
+
+Result summary: simple QP threshold tuning is negative. M8c/M8d/M8e all have harm rate 0.3333 and collapse to the same trajectory. M8b is the best hard top-k method in this run: at budget 8, BT PAE reranking gives M8b 9.5652 versus M3 12.8342, and BT ipTM reranking gives M8b 0.4657 versus M3 0.4533. However, M8b update harm is 0.2917 versus M3 0.2083 and includes an infeasible fallback step, so it is not ready for scale-up.
+
 ## Blockers
 
 - Torch is currently CPU-only because Mosaic's `pyproject.toml` routes torch through the PyTorch CPU wheel index.
+- ACT-018 needs a method choice before the next run: revised QP fallback/candidate search versus hard-candidate optimizer such as CEM-lite or gradual position-wise hardening.
