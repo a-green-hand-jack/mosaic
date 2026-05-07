@@ -22,6 +22,7 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - ACT-016: Implement QP-style constrained update.
 - ACT-017: Tune QP-style constrained update and diagnose feasibility.
 - ACT-018: Revise QP fallback and grid search.
+- ACT-019: Test gradual position-wise hardening.
 - CLM-001: Holdout-gradient insensitivity signature.
 - CLM-002: Cross-oracle robustness metric design.
 - EVD-003: In silico filter metric taxonomy.
@@ -47,7 +48,9 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - ACT-015B result: QP-grid M8a strongly improves soft terminal interface metrics and top-k BT ipTM, but M3 remains best on BT PAE/contact and M8a increases update harm; summarized in `docs/reports/phase0_act015b_qp_2026-05-07.md`.
 - ACT-017 result: QP threshold tuning did not reduce harm; M8c/M8d/M8e collapse to the same trajectory. M8b unexpectedly gives the best matched-budget hard top-k BT PAE/ipTM in the reduced run, but it still exceeds M3 update harm and has an infeasible fallback step; summarized in `docs/reports/phase0_act017_qp_tuning_2026-05-07.md`.
 - ACT-018 result: QP fallback and grid revisions did not pass the gate. Contact-first fallback trades M8b's contact violation for auxiliary violation and higher harm; denominator-20 M8h exactly matches M8b. M8a/M8g win hard top-k in the reduced run but have worse harm than M3; summarized in `docs/reports/phase0_act018_qp_fallback_2026-05-07.md`.
-- Interpretation: gradient-guided constrained updates remain promising, but QP-grid threshold/fallback/grid tuning should be parked. The next branch task should start gradual position-wise hardening or warm-started hard-candidate optimization.
+- ACT-019 implementation commit: `f9d49f8`.
+- ACT-019 result: naive gradual position hardening lowers entropy and freezes positions, but increases update harm and degrades soft/argmax candidate quality. `M9b` has a narrow best-of-8 BT PAE signal, but it does not pass the combined safety-quality gate; summarized in `docs/reports/phase0_act019_gradual_hardening_2026-05-07.md`.
+- Interpretation: gradient-guided constrained updates remain promising, but QP-grid threshold/fallback/grid tuning and naive early hardening should be parked. The next branch task should test warm-started hard-candidate optimization or delayed contact-gated hardening with an unfreeze mechanism.
 
 ## Exit Condition
 
@@ -57,4 +60,4 @@ Prepare a runnable Phase 0 baseline pilot for SCH-BinderDesign on Quest before i
 - A100/H100 smoke result is recorded or explicitly blocked by queue availability.
 - M0/M1/M3 update-level logging is ready for a Phase 0 diagnostic run.
 - Soft and argmax candidate scoring are separated in the output schema.
-- ACT-018 blocks immediate QP-grid scale-up; next exit gate is a non-QP-grid hardening or hard-candidate optimizer that improves matched-budget BT PAE/contact without exceeding M3 update harm.
+- ACT-018 blocks immediate QP-grid scale-up, and ACT-019 blocks naive early hardening scale-up; next exit gate is a hard-candidate optimizer or delayed gated hardening method that improves matched-budget BT PAE/contact without exceeding M3 update harm.
