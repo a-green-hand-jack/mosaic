@@ -181,11 +181,12 @@ def configure_protenix_cache(path: Path) -> None:
     ccd.get_component_atom_array.cache_clear()
 
 
-def read_target_sequence(path: Path, target_length: int) -> str:
+def read_target_sequence(path: Path, target_length: int, chain_id: str | None = None) -> str:
     structure = gemmi.read_structure(str(path))
     structure.remove_ligands_and_waters()
     structure.remove_empty_chains()
-    sequence = gemmi.one_letter_code([res.name for res in structure[0][0]])
+    chain = structure[0][chain_id] if chain_id else structure[0][0]
+    sequence = gemmi.one_letter_code([res.name for res in chain])
     return sequence[:target_length]
 
 
@@ -194,7 +195,11 @@ def build_loss_context(args: argparse.Namespace):
 
     from mosaic.models.protenix import ProtenixMini
 
-    target_sequence = read_target_sequence(args.target_structure, args.target_length)
+    target_sequence = read_target_sequence(
+        args.target_structure,
+        args.target_length,
+        getattr(args, "target_chain", None),
+    )
     model = ProtenixMini()
     features, _writer = model.binder_features(
         binder_length=args.binder_length,
@@ -524,6 +529,7 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target-structure", type=Path, default=Path("IL7RA.cif"))
+    parser.add_argument("--target-chain", default=None)
     parser.add_argument("--target-length", type=int, default=48)
     parser.add_argument("--binder-length", type=int, default=24)
     parser.add_argument("--steps", type=int, default=4)
