@@ -46,11 +46,45 @@ def git_metadata() -> dict[str, str | None]:
         except Exception:
             return None
 
+    file_git = resolve_git_metadata_from_files(Path.cwd())
     return {
-        "commit": run(["git", "rev-parse", "HEAD"]),
-        "short_commit": run(["git", "rev-parse", "--short", "HEAD"]),
-        "branch": run(["git", "branch", "--show-current"]),
+        "commit": run(["git", "rev-parse", "HEAD"]) or file_git["commit"],
+        "short_commit": run(["git", "rev-parse", "--short", "HEAD"]) or file_git["short_commit"],
+        "branch": run(["git", "branch", "--show-current"]) or file_git["branch"],
         "dirty": run(["git", "status", "--short"]),
+    }
+
+
+def resolve_git_metadata_from_files(repo: Path) -> dict[str, str | None]:
+    git_path = repo / ".git"
+    if git_path.is_file():
+        content = git_path.read_text(encoding="utf-8").strip()
+        if not content.startswith("gitdir:"):
+            return {"commit": None, "short_commit": None, "branch": None}
+        git_dir = (repo / content.split(":", 1)[1].strip()).resolve()
+    elif git_path.is_dir():
+        git_dir = git_path
+    else:
+        return {"commit": None, "short_commit": None, "branch": None}
+
+    head_path = git_dir / "HEAD"
+    if not head_path.exists():
+        return {"commit": None, "short_commit": None, "branch": None}
+
+    head = head_path.read_text(encoding="utf-8").strip()
+    if head.startswith("ref:"):
+        ref = head.split(":", 1)[1].strip()
+        commit_path = git_dir / ref
+        commit = commit_path.read_text(encoding="utf-8").strip() if commit_path.exists() else None
+        branch = ref.removeprefix("refs/heads/")
+    else:
+        commit = head
+        branch = None
+
+    return {
+        "commit": commit,
+        "short_commit": commit[:7] if commit else None,
+        "branch": branch,
     }
 
 
