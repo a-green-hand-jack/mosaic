@@ -154,11 +154,12 @@ def read_candidates(
     method_ids: set[str] | None,
     score_modes: set[str] | None,
     deduplicate_sequences: bool,
+    balance_by: str,
 ) -> list[dict[str, Any]]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
-    selected: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     seen_sequences: set[str] = set()
     for row_index, row in enumerate(rows):
         sequence = (row.get("sequence") or "").strip().upper()
@@ -174,9 +175,9 @@ def read_candidates(
         row = dict(row)
         row["source_row_index"] = row_index
         row["sequence"] = sequence
-        selected.append(row)
-        if len(selected) >= max_candidates:
-            break
+        candidates.append(row)
+
+    selected = select_candidates(candidates, max_candidates=max_candidates, balance_by=balance_by)
 
     if not selected:
         raise ValueError(f"No candidates selected from {path}")
@@ -184,6 +185,48 @@ def read_candidates(
     lengths = {len(row["sequence"]) for row in selected}
     if len(lengths) != 1:
         raise ValueError(f"Selected candidates have mixed lengths: {sorted(lengths)}")
+    return selected
+
+
+def balance_key(row: dict[str, Any], balance_by: str) -> tuple[str, ...]:
+    if balance_by == "none":
+        return ("all",)
+    if balance_by == "method_id":
+        return (str(row.get("method_id") or ""),)
+    if balance_by == "method_score_mode":
+        return (str(row.get("method_id") or ""), str(row.get("score_mode") or ""))
+    raise ValueError(f"Unsupported balance_by={balance_by}")
+
+
+def select_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    max_candidates: int,
+    balance_by: str,
+) -> list[dict[str, Any]]:
+    if balance_by == "none":
+        return candidates[:max_candidates]
+
+    groups: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    group_order: list[tuple[str, ...]] = []
+    for row in candidates:
+        key = balance_key(row, balance_by)
+        if key not in groups:
+            groups[key] = []
+            group_order.append(key)
+        groups[key].append(row)
+
+    selected: list[dict[str, Any]] = []
+    while len(selected) < max_candidates:
+        made_progress = False
+        for key in group_order:
+            if groups[key]:
+                selected.append(groups[key].pop(0))
+                made_progress = True
+                if len(selected) >= max_candidates:
+                    break
+        if not made_progress:
+            break
     return selected
 
 
@@ -358,6 +401,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Comma-separated score_mode allowlist, e.g. argmax,topk_sample.",
     )
+    parser.add_argument(
+        "--balance-by",
+        choices=("none", "method_id", "method_score_mode"),
+        default="none",
+        help="Round-robin selected candidates across this key after filtering.",
+    )
     parser.add_argument("--deduplicate-sequences", action="store_true")
     parser.add_argument("--recycling-steps", type=int, default=1)
     parser.add_argument("--sampling-steps", type=int, default=1)
@@ -387,6 +436,7 @@ def main() -> None:
         method_ids=parse_csv_list(args.method_ids),
         score_modes=parse_csv_list(args.score_modes),
         deduplicate_sequences=args.deduplicate_sequences,
+        balance_by=args.balance_by,
     )
     binder_len = len(source_rows[0]["sequence"])
     target = make_target_chain(args.target_structure, args.target_chain, args.target_length)
