@@ -63,6 +63,13 @@ METHODS = [
         min_primary_descent_ratio=0.60,
         cone_denominator=10,
     ),
+    MethodSpec(
+        "M10a",
+        "balanced_zero_harm_cone",
+        aux_slack=0.0,
+        max_aux_harms=0,
+        cone_denominator=10,
+    ),
 ]
 
 

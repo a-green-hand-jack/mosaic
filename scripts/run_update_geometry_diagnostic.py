@@ -263,6 +263,19 @@ def choose_raw_direction(
             ),
         )
 
+    if method.name == "balanced_zero_harm_cone":
+        if x is None or step_size is None:
+            raise ValueError("balanced_zero_harm_cone needs x and step_size")
+        return choose_balanced_zero_harm_cone_direction(
+            grads=grads,
+            weights=weights,
+            x=x,
+            step_size=step_size,
+            aux_slack=method.aux_slack,
+            max_harms=method.max_aux_harms,
+            cone_denominator=method.cone_denominator,
+        )
+
     raise ValueError(method.name)
 
 
@@ -493,6 +506,95 @@ def choose_contact_qp_grid_direction(
     )["raw"]
 
 
+def evaluate_direction_candidate(
+    *,
+    raw: jax.Array,
+    grads: dict[str, jax.Array],
+    x: jax.Array,
+    step_size: float,
+) -> dict[str, Any]:
+    _, actual_update = projected_update(x, raw, step_size)
+    derivatives = {name: flatten_dot(grad, actual_update) for name, grad in grads.items()}
+    step_norm_value = grad_norm(actual_update)
+    normalized_derivatives = {
+        name: derivatives[name] / (grad_norm(grads[name]) * step_norm_value + 1e-12)
+        for name in grads
+    }
+    return {
+        "raw": raw,
+        "actual_update": actual_update,
+        "derivatives": derivatives,
+        "normalized_derivatives": normalized_derivatives,
+        "harm_count": sum(value > 0 for value in derivatives.values()),
+        "worst_derivative": max(derivatives.values()),
+        "mean_derivative": float(np.mean(list(derivatives.values()))),
+        "worst_normalized_derivative": max(normalized_derivatives.values()),
+        "mean_normalized_derivative": float(np.mean(list(normalized_derivatives.values()))),
+        "step_norm": step_norm_value,
+    }
+
+
+def choose_balanced_zero_harm_cone_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    step_size: float,
+    aux_slack: float = 0.0,
+    max_harms: int = 0,
+    cone_denominator: int = 8,
+) -> jax.Array:
+    """Choose the strongest balanced descent candidate with bounded oracle harm.
+
+    Unlike the contact-preserving variants, this selector does not privilege one
+    structure oracle as the primary target. It first looks for cone candidates
+    whose projected update does not harm the oracle set, then chooses the one
+    with the strongest average normalized descent so that high-scale oracle
+    derivatives do not dominate the balance criterion. This directly tests
+    oracle balance rather than direct opposition between any particular oracle
+    pair.
+    """
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=cone_denominator)
+    evaluated = [
+        evaluate_direction_candidate(
+            raw=raw,
+            grads=grads,
+            x=x,
+            step_size=step_size,
+        )
+        for raw in candidates
+    ]
+
+    feasible = [
+        item
+        for item in evaluated
+        if item["harm_count"] <= max_harms and item["worst_derivative"] <= aux_slack
+    ]
+    if feasible:
+        return min(
+            feasible,
+            key=lambda item: (
+                item["mean_normalized_derivative"],
+                item["worst_normalized_derivative"],
+                -item["step_norm"],
+                item["mean_derivative"],
+                item["worst_derivative"],
+            ),
+        )["raw"]
+
+    return min(
+        evaluated,
+        key=lambda item: (
+            item["harm_count"],
+            item["worst_normalized_derivative"],
+            item["mean_normalized_derivative"],
+            -item["step_norm"],
+            item["worst_derivative"],
+            item["mean_derivative"],
+        ),
+    )["raw"]
+
+
 def contact_qp_grid_diagnostics(
     *,
     grads: dict[str, jax.Array],
@@ -535,6 +637,70 @@ def contact_qp_grid_diagnostics(
         "qp_selected_contact_violation": contact_violation,
         "qp_selected_contact_distance": grad_norm(actual_update - contact_update),
         "qp_selected_feasible": selected_feasible,
+    }
+
+
+def balanced_zero_harm_diagnostics(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    x: jax.Array,
+    actual_update: jax.Array,
+    step_size: float,
+    aux_slack: float,
+    max_harms: int,
+    cone_denominator: int,
+) -> dict[str, float | bool]:
+    candidates = cone_candidates(grads=grads, weights=weights, denominator=cone_denominator)
+    evaluated = [
+        evaluate_direction_candidate(
+            raw=raw,
+            grads=grads,
+            x=x,
+            step_size=step_size,
+        )
+        for raw in candidates
+    ]
+    feasible = [
+        item
+        for item in evaluated
+        if item["harm_count"] <= max_harms and item["worst_derivative"] <= aux_slack
+    ]
+    selected_derivatives = {
+        name: flatten_dot(grad, actual_update) for name, grad in grads.items()
+    }
+    selected_step_norm = grad_norm(actual_update)
+    selected_normalized_derivatives = {
+        name: selected_derivatives[name] / (grad_norm(grads[name]) * selected_step_norm + 1e-12)
+        for name in grads
+    }
+    return {
+        "balanced_candidate_count": float(len(evaluated)),
+        "balanced_feasible_candidate_count": float(len(feasible)),
+        "balanced_selected_feasible": (
+            sum(value > 0 for value in selected_derivatives.values()) <= max_harms
+            and max(selected_derivatives.values()) <= aux_slack
+        ),
+        "balanced_selected_mean_derivative": float(np.mean(list(selected_derivatives.values()))),
+        "balanced_selected_worst_derivative": max(selected_derivatives.values()),
+        "balanced_selected_mean_normalized_derivative": float(
+            np.mean(list(selected_normalized_derivatives.values()))
+        ),
+        "balanced_selected_worst_normalized_derivative": max(
+            selected_normalized_derivatives.values()
+        ),
+        "balanced_best_mean_derivative": min(item["mean_derivative"] for item in evaluated),
+        "balanced_best_feasible_mean_derivative": (
+            min(item["mean_derivative"] for item in feasible) if feasible else float("nan")
+        ),
+        "balanced_best_mean_normalized_derivative": min(
+            item["mean_normalized_derivative"] for item in evaluated
+        ),
+        "balanced_best_feasible_mean_normalized_derivative": (
+            min(item["mean_normalized_derivative"] for item in feasible)
+            if feasible
+            else float("nan")
+        ),
     }
 
 
@@ -744,6 +910,19 @@ def run_single_method_with_terminal(
                     step_size=step_size,
                     aux_slack=method.aux_slack,
                     min_primary_descent_ratio=method.min_primary_descent_ratio,
+                    cone_denominator=method.cone_denominator,
+                )
+            )
+        if method.name == "balanced_zero_harm_cone":
+            row.update(
+                balanced_zero_harm_diagnostics(
+                    grads=grads,
+                    weights=weights,
+                    x=x,
+                    actual_update=actual_update,
+                    step_size=step_size,
+                    aux_slack=method.aux_slack,
+                    max_harms=method.max_aux_harms,
                     cone_denominator=method.cone_denominator,
                 )
             )
