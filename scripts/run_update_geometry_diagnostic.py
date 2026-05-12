@@ -221,6 +221,9 @@ def choose_raw_direction(
     if method.name == "normalized_weighted":
         return raw
 
+    if method.name == "pcgrad_normalized":
+        return choose_pcgrad_normalized_direction(grads=grads, weights=weights)
+
     if method.name == "soft_cone_correction":
         if x is None or step_size is None:
             raise ValueError("soft_cone_correction needs x and step_size")
@@ -351,6 +354,34 @@ def cone_candidates(
         raw = -sum(float(a) * normed_grads[name] for a, name in zip(alpha, names))
         candidates.append(raw)
     return candidates
+
+
+def choose_pcgrad_normalized_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+) -> jax.Array:
+    """Deterministic PCGrad-style projection over normalized oracle gradients.
+
+    This keeps the comparison close to M4 by normalizing each oracle gradient
+    before applying pairwise conflict projection. If two oracle gradients have
+    negative inner product, the left gradient has the conflicting component
+    removed before the final weighted descent direction is assembled.
+    """
+    names = list(grads)
+    base = {name: normalized(grads[name]) for name in names}
+    adjusted: dict[str, jax.Array] = {}
+    for left in names:
+        current = base[left]
+        for right in names:
+            if left == right:
+                continue
+            dot = flatten_dot(current, base[right])
+            if dot < 0.0:
+                denom = flatten_dot(base[right], base[right]) + 1e-8
+                current = current - (dot / denom) * base[right]
+        adjusted[left] = current
+    return -sum(weights[name] * adjusted[name] for name in names)
 
 
 def choose_contact_preserving_direction(
@@ -714,6 +745,50 @@ def offdiag_cosines(grads: dict[str, jax.Array]) -> dict[str, float]:
     return out
 
 
+def safe_label(text: str) -> str:
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in text)
+
+
+def write_gradient_snapshot(
+    *,
+    snapshot_dir: Path,
+    method: MethodSpec,
+    seed: int,
+    step: int,
+    x: jax.Array,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    values: dict[str, float],
+    context: dict[str, Any] | None = None,
+) -> Path:
+    """Write a compact replayable gradient snapshot for offline update-rule tests."""
+    context = context or {}
+    label = safe_label(str(context.get("label", "snapshot")))
+    oracle_names = list(grads)
+    metadata = {
+        "label": label,
+        "context": context,
+        "method_id": method.method_id,
+        "method": method.name,
+        "seed": seed,
+        "step": step,
+        "oracle_names": oracle_names,
+        "weights": {name: float(weights[name]) for name in oracle_names},
+        "loss_values": {name: float(values[name]) for name in oracle_names},
+    }
+    path = snapshot_dir / f"{label}_seed{seed:04d}_{method.method_id}_step{step:04d}.npz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        path,
+        x=np.asarray(x, dtype=np.float32),
+        grad_stack=np.stack([np.asarray(grads[name], dtype=np.float32) for name in oracle_names]),
+        oracle_names=np.asarray(oracle_names),
+        weights_json=np.asarray(json.dumps(metadata["weights"], sort_keys=True)),
+        metadata_json=np.asarray(json.dumps(metadata, sort_keys=True)),
+    )
+    return path
+
+
 def sharpen_distribution(x: jax.Array, temperature: float) -> jax.Array:
     temperature = max(float(temperature), 1e-6)
     if temperature >= 1.0:
@@ -806,6 +881,8 @@ def run_single_method_with_terminal(
     steps: int,
     step_size: float,
     init_temperature: float,
+    snapshot_dir: Path | None = None,
+    snapshot_context: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], jax.Array]:
     key = jax.random.key(seed)
     x = jax.nn.softmax(
@@ -830,6 +907,19 @@ def run_single_method_with_terminal(
                 if hasattr(aux_value, "shape") and aux_value.shape == ()
             }
             grads[name] = grad
+
+        if snapshot_dir is not None:
+            write_gradient_snapshot(
+                snapshot_dir=snapshot_dir,
+                method=method,
+                seed=seed,
+                step=step,
+                x=x,
+                grads=grads,
+                weights=weights,
+                values=values,
+                context=snapshot_context,
+            )
 
         raw_direction = choose_raw_direction(
             method,
@@ -942,6 +1032,8 @@ def run_single_method(
     steps: int,
     step_size: float,
     init_temperature: float,
+    snapshot_dir: Path | None = None,
+    snapshot_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     rows, _terminal = run_single_method_with_terminal(
         method=method,
@@ -952,6 +1044,8 @@ def run_single_method(
         steps=steps,
         step_size=step_size,
         init_temperature=init_temperature,
+        snapshot_dir=snapshot_dir,
+        snapshot_context=snapshot_context,
     )
     return rows
 
@@ -1039,6 +1133,7 @@ def main() -> None:
     parser.add_argument("--trigram-path", type=Path, default=Path("trigram_seg.pkl"))
     parser.add_argument("--output-dir", type=Path, default=Path("docs/results"))
     parser.add_argument("--report-dir", type=Path, default=Path("docs/reports"))
+    parser.add_argument("--snapshot-dir", type=Path, default=None)
     args = parser.parse_args()
 
     hydrophobic_weights = token_indicator(HYDROPHOBIC)
@@ -1068,6 +1163,8 @@ def main() -> None:
                     steps=args.steps,
                     step_size=args.step_size,
                     init_temperature=args.init_temperature,
+                    snapshot_dir=args.snapshot_dir,
+                    snapshot_context={"label": "proxy_update_geometry"},
                 )
             )
 

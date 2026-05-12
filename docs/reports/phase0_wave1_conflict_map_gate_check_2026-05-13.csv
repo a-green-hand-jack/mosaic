@@ -1,0 +1,5 @@
+gate_decision,mean_boltz2_directional_derivative,mean_oracle_harm_rate,mean_protenix_directional_derivative,mean_step_norm,mean_worst_oracle_directional_derivative,method,method_id,num_rows,num_seeds,num_targets,zero_harm,zero_harm_targets
+baseline,-0.07192706009373069,0.0,-1.8416703663766385,0.5022839322686196,-0.013477584347128868,normalized_weighted,M4,20,4,5,True,5
+fail,-0.06694655018509366,0.08,-5.390254252403975,0.810299026966095,0.004740161841618828,contact_preserving_soft_cone,M7c,20,4,5,False,1
+fail,-0.04386249310919084,0.25,-7.774297547340393,1.0425023689866066,0.03525018925429322,naive_weighted,M3,20,4,5,False,0
+fail,-0.03010196564719081,0.39,-7.26936012506485,0.9463940888643265,0.03536543708760291,contact_qp_grid,M8a,20,4,5,False,0

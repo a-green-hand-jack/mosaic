@@ -70,6 +70,7 @@ METHODS = [
         max_aux_harms=0,
         cone_denominator=10,
     ),
+    MethodSpec("M11a", "pcgrad_normalized"),
 ]
 
 
@@ -284,6 +285,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--method-ids", default="M3,M4,M7c,M8a")
     parser.add_argument("--output-dir", type=Path, default=Path("docs/results"))
     parser.add_argument("--report-dir", type=Path, default=Path("docs/reports"))
+    parser.add_argument("--snapshot-dir", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -306,6 +308,14 @@ def main() -> None:
                     steps=args.steps,
                     step_size=args.step_size,
                     init_temperature=args.init_temperature,
+                    snapshot_dir=args.snapshot_dir,
+                    snapshot_context={
+                        "label": f"{args.target_structure.stem}_{args.target_chain}",
+                        "target_structure": str(args.target_structure),
+                        "target_chain": args.target_chain,
+                        "target_length": args.target_length,
+                        "binder_length": args.binder_length,
+                    },
                 )
             )
 
