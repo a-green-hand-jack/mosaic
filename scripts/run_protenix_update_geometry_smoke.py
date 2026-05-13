@@ -40,6 +40,7 @@ METHODS = [
     MethodSpec("M1", "single_protenix_contact"),
     MethodSpec("M3", "naive_weighted"),
     MethodSpec("M4", "normalized_weighted"),
+    MethodSpec("M11a", "pcgrad_normalized"),
     MethodSpec("M6", "soft_cone_correction"),
     MethodSpec(
         "M7a",
