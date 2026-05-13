@@ -10,9 +10,11 @@ LOG_PATH="${LOG_PATH:-${LOG_DIR}/manual-boltz2-oracle-balance-expb-wave1-$(hostn
 MONITOR_LOG_PATH="${MONITOR_LOG_PATH:-${LOG_DIR}/resource-boltz2-oracle-balance-expb-wave1-$(hostname)-${RUN_STAMP}.out}"
 TARGET_ROOT="${TARGET_ROOT:-/projects/p32572/Jieke/Projects/SCH-BinderDesign/data/benchmarks/targets/raw/rcsb}"
 RUN_GIT_COMMIT="${RUN_GIT_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)}"
+SNAPSHOT_DIR="${SNAPSHOT_DIR:-docs/results/gradient_snapshots/phase0_oracle_balance_exp_b_wave1_${RUN_STAMP}}"
 
 export BOLTZ_CACHE="${BOLTZ_CACHE:-/projects/p32572/Jieke/.cache/boltz}"
 export TARGET_ROOT
+export SNAPSHOT_DIR
 export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export RUN_GIT_COMMIT
@@ -26,6 +28,7 @@ echo "start_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "node=$(hostname)"
 echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
 echo "git_commit=${RUN_GIT_COMMIT:-nogit}"
+echo "snapshot_dir=${SNAPSHOT_DIR}"
 nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits || true
 
 run_target() {
@@ -40,12 +43,13 @@ run_target() {
     --target-length "${length}" \
     --steps "${STEPS:-1}" \
     --num-seeds "${NUM_SEEDS:-4}" \
-    --method-ids "${METHOD_IDS:-M3,M4,M7c,M8a,M10a}" \
+    --method-ids "${METHOD_IDS:-M3,M4,M7c,M8a,M10a,M11a}" \
     --binder-length "${BINDER_LENGTH:-24}" \
     --recycling-steps "${RECYCLING_STEPS:-1}" \
     --sampling-steps "${SAMPLING_STEPS:-1}" \
     --boltz-recycling-steps "${BOLTZ_RECYCLING_STEPS:-1}" \
     --step-size "${STEP_SIZE:-0.25}" \
+    --snapshot-dir "${SNAPSHOT_DIR}" \
     --report-dir docs/reports \
     --output-dir docs/results
   echo "===TARGET ${target_id} done=$(date -u +%Y-%m-%dT%H:%M:%SZ)==="
