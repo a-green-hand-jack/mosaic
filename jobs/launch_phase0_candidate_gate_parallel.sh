@@ -106,6 +106,7 @@ run_target() {
     --score-modes "${BOLTZ2_SCORE_MODES:-argmax,topk_sample,soft}" \
     --balance-by "${BALANCE_BY:-method_score_mode}" \
     --deduplicate-sequences \
+    --deduplicate-scope "${DEDUPLICATE_SCOPE:-group}" \
     --recycling-steps "${BOLTZ_RECYCLING_STEPS:-1}" \
     --sampling-steps "${BOLTZ_SAMPLING_STEPS:-1}" \
     --output-dir "${boltz_dir}" \

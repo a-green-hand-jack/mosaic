@@ -154,13 +154,13 @@ def read_candidates(
     method_ids: set[str] | None,
     score_modes: set[str] | None,
     deduplicate_sequences: bool,
+    deduplicate_scope: str,
     balance_by: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
 
-    candidates: list[dict[str, Any]] = []
-    seen_sequences: set[str] = set()
+    filtered: list[dict[str, Any]] = []
     for row_index, row in enumerate(rows):
         sequence = (row.get("sequence") or "").strip().upper()
         if not sequence:
@@ -169,15 +169,30 @@ def read_candidates(
             continue
         if score_modes is not None and row.get("score_mode") not in score_modes:
             continue
-        if deduplicate_sequences and sequence in seen_sequences:
-            continue
-        seen_sequences.add(sequence)
         row = dict(row)
         row["source_row_index"] = row_index
         row["sequence"] = sequence
-        candidates.append(row)
+        row["selection_group"] = format_balance_key(balance_key(row, balance_by))
+        filtered.append(row)
+
+    candidates = deduplicate_candidate_rows(
+        filtered,
+        deduplicate_sequences=deduplicate_sequences,
+        deduplicate_scope=deduplicate_scope,
+        balance_by=balance_by,
+    )
 
     selected = select_candidates(candidates, max_candidates=max_candidates, balance_by=balance_by)
+    selection_summary = summarize_selection(
+        raw_rows=rows,
+        filtered_rows=filtered,
+        deduplicated_rows=candidates,
+        selected_rows=selected,
+        max_candidates=max_candidates,
+        balance_by=balance_by,
+        deduplicate_sequences=deduplicate_sequences,
+        deduplicate_scope=deduplicate_scope,
+    )
 
     if not selected:
         raise ValueError(f"No candidates selected from {path}")
@@ -185,7 +200,7 @@ def read_candidates(
     lengths = {len(row["sequence"]) for row in selected}
     if len(lengths) != 1:
         raise ValueError(f"Selected candidates have mixed lengths: {sorted(lengths)}")
-    return selected
+    return selected, selection_summary
 
 
 def balance_key(row: dict[str, Any], balance_by: str) -> tuple[str, ...]:
@@ -196,6 +211,47 @@ def balance_key(row: dict[str, Any], balance_by: str) -> tuple[str, ...]:
     if balance_by == "method_score_mode":
         return (str(row.get("method_id") or ""), str(row.get("score_mode") or ""))
     raise ValueError(f"Unsupported balance_by={balance_by}")
+
+
+def format_balance_key(key: tuple[str, ...]) -> str:
+    return "::".join(key)
+
+
+def deduplicate_candidate_rows(
+    candidates: list[dict[str, Any]],
+    *,
+    deduplicate_sequences: bool,
+    deduplicate_scope: str,
+    balance_by: str,
+) -> list[dict[str, Any]]:
+    if not deduplicate_sequences:
+        return list(candidates)
+
+    if deduplicate_scope == "global":
+        deduplicated: list[dict[str, Any]] = []
+        seen_sequences: set[str] = set()
+        for row in candidates:
+            sequence = row["sequence"]
+            if sequence in seen_sequences:
+                continue
+            seen_sequences.add(sequence)
+            deduplicated.append(row)
+        return deduplicated
+
+    if deduplicate_scope == "group":
+        deduplicated = []
+        seen_by_group: dict[tuple[str, ...], set[str]] = {}
+        for row in candidates:
+            key = balance_key(row, balance_by)
+            sequence = row["sequence"]
+            seen_sequences = seen_by_group.setdefault(key, set())
+            if sequence in seen_sequences:
+                continue
+            seen_sequences.add(sequence)
+            deduplicated.append(row)
+        return deduplicated
+
+    raise ValueError(f"Unsupported deduplicate_scope={deduplicate_scope}")
 
 
 def select_candidates(
@@ -228,6 +284,53 @@ def select_candidates(
         if not made_progress:
             break
     return selected
+
+
+def count_by_group(rows: list[dict[str, Any]], balance_by: str) -> dict[tuple[str, ...], int]:
+    counts: dict[tuple[str, ...], int] = {}
+    for row in rows:
+        key = balance_key(row, balance_by)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def summarize_selection(
+    *,
+    raw_rows: list[dict[str, Any]],
+    filtered_rows: list[dict[str, Any]],
+    deduplicated_rows: list[dict[str, Any]],
+    selected_rows: list[dict[str, Any]],
+    max_candidates: int,
+    balance_by: str,
+    deduplicate_sequences: bool,
+    deduplicate_scope: str,
+) -> dict[str, Any]:
+    filtered_counts = count_by_group(filtered_rows, balance_by)
+    deduplicated_counts = count_by_group(deduplicated_rows, balance_by)
+    selected_counts = count_by_group(selected_rows, balance_by)
+    group_keys = sorted(set(filtered_counts) | set(deduplicated_counts) | set(selected_counts))
+    return {
+        "input_rows": len(raw_rows),
+        "filtered_rows": len(filtered_rows),
+        "deduplicated_rows": len(deduplicated_rows),
+        "selected_rows": len(selected_rows),
+        "max_candidates": max_candidates,
+        "balance_by": balance_by,
+        "deduplicate_sequences": deduplicate_sequences,
+        "deduplicate_scope": deduplicate_scope if deduplicate_sequences else "none",
+        "deduplicated_removed_rows": len(filtered_rows) - len(deduplicated_rows),
+        "unselected_rows": len(deduplicated_rows) - len(selected_rows),
+        "groups": [
+            {
+                "key": list(key),
+                "group": format_balance_key(key),
+                "available_rows": filtered_counts.get(key, 0),
+                "deduplicated_rows": deduplicated_counts.get(key, 0),
+                "selected_rows": selected_counts.get(key, 0),
+            }
+            for key in group_keys
+        ],
+    }
 
 
 def finite_metrics(output, binder_len: int) -> dict[str, float | bool | list[int]]:
@@ -305,12 +408,22 @@ def pearson(x_values: list[float | None], y_values: list[float | None]) -> float
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    method_counts: dict[str, int] = {}
+    method_score_mode_counts: dict[str, int] = {}
+    for row in rows:
+        method_id = str(row.get("method_id") or "")
+        score_mode = str(row.get("score_mode") or "")
+        method_counts[method_id] = method_counts.get(method_id, 0) + 1
+        key = f"{method_id}::{score_mode}"
+        method_score_mode_counts[key] = method_score_mode_counts.get(key, 0) + 1
     return {
         "num_candidates": len(rows),
         "all_finite_scoring_ok": all(bool(row["boltz2_finite_scoring_ok"]) for row in rows),
         "any_structure_finite": any(bool(row["boltz2_structure_finite"]) for row in rows),
         "mean_boltz2_inter_pae": float(np.mean([row["boltz2_inter_pae_mean"] for row in rows])),
         "best_boltz2_sequence": min(rows, key=lambda row: row["boltz2_inter_pae_mean"])["sequence"],
+        "selected_by_method_id": method_counts,
+        "selected_by_method_score_mode": method_score_mode_counts,
         "pearson_candidate_bt_pae_vs_boltz2_inter_pae": pearson(
             [safe_float(row.get("candidate_bt_pae")) for row in rows],
             [safe_float(row.get("boltz2_inter_pae_mean")) for row in rows],
@@ -324,6 +437,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def write_report(path: Path, payload: dict[str, Any]) -> None:
     summary = payload["summary"]
+    selection = payload["candidate_selection"]
     lines = [
         "# Boltz2 Candidate Holdout Scoring",
         "",
@@ -347,6 +461,29 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
         f"{summary['pearson_candidate_bt_pae_vs_boltz2_inter_pae']}",
         "- Pearson Protenix contact vs Boltz2 contact@12A: "
         f"{summary['pearson_candidate_contact_vs_boltz2_contact12']}",
+        "",
+        "## Candidate Selection",
+        "",
+        f"- Balance key: `{selection['balance_by']}`",
+        f"- Deduplicate sequences: {selection['deduplicate_sequences']}",
+        f"- Deduplicate scope: `{selection['deduplicate_scope']}`",
+        f"- Input rows: {selection['input_rows']}",
+        f"- Filtered rows: {selection['filtered_rows']}",
+        f"- Deduplicated rows: {selection['deduplicated_rows']}",
+        f"- Selected rows: {selection['selected_rows']}",
+        f"- Rows removed by deduplication: {selection['deduplicated_removed_rows']}",
+        f"- Rows left unselected after balancing: {selection['unselected_rows']}",
+        "",
+        "| Group | Available | After Dedup | Selected |",
+        "|---|---:|---:|---:|",
+    ]
+    for group in selection["groups"]:
+        lines.append(
+            "| `{group}` | {available_rows} | {deduplicated_rows} | {selected_rows} |".format(
+                **group
+            )
+        )
+    lines += [
         "",
         "## Top Boltz2 Candidates",
         "",
@@ -408,6 +545,16 @@ def parse_args() -> argparse.Namespace:
         help="Round-robin selected candidates across this key after filtering.",
     )
     parser.add_argument("--deduplicate-sequences", action="store_true")
+    parser.add_argument(
+        "--deduplicate-scope",
+        choices=("global", "group"),
+        default="global",
+        help=(
+            "Scope for --deduplicate-sequences. The default preserves legacy "
+            "global sequence deduplication; group deduplicates within the "
+            "selected --balance-by group before round-robin selection."
+        ),
+    )
     parser.add_argument("--recycling-steps", type=int, default=1)
     parser.add_argument("--sampling-steps", type=int, default=1)
     parser.add_argument("--seed", type=int, default=17)
@@ -430,12 +577,13 @@ def main() -> None:
     print("torch", torch.__version__, "torch_cuda_available", torch.cuda.is_available(), flush=True)
     print("checkpoint", checkpoint, "exists", checkpoint.exists(), flush=True)
 
-    source_rows = read_candidates(
+    source_rows, selection_summary = read_candidates(
         args.candidates_csv,
         max_candidates=args.max_candidates,
         method_ids=parse_csv_list(args.method_ids),
         score_modes=parse_csv_list(args.score_modes),
         deduplicate_sequences=args.deduplicate_sequences,
+        deduplicate_scope=args.deduplicate_scope,
         balance_by=args.balance_by,
     )
     binder_len = len(source_rows[0]["sequence"])
@@ -523,6 +671,7 @@ def main() -> None:
         "run_id": run_id,
         "args": {key: str(value) for key, value in vars(args).items()},
         "git": git_metadata(),
+        "candidate_selection": selection_summary,
         "summary": summarize(ranked_rows),
         "rows": ranked_rows,
         "csv_path": str(csv_path),
