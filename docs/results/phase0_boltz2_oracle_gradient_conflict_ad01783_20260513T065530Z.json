@@ -1,0 +1,185 @@
+{
+  "args": {
+    "binder_length": "24",
+    "boltz_cache": "/projects/p32572/Jieke/.cache/boltz",
+    "boltz_contact_distance": "12.0",
+    "boltz_recycling_steps": "1",
+    "contact_distance": "20.0",
+    "init_temperature": "0.5",
+    "method_ids": "M3,M4,M7c,M8a,M10a,M11a",
+    "num_seeds": "4",
+    "output_dir": "docs/results",
+    "protenix_cache": "/projects/p32572/Jieke/.cache/protenix",
+    "recycling_steps": "1",
+    "report_dir": "docs/reports",
+    "sampling_steps": "1",
+    "seed_start": "0",
+    "snapshot_dir": "docs/results/gradient_snapshots/phase0_oracle_balance_exp_b_wave1_20260513T051049Z",
+    "step_size": "0.25",
+    "steps": "1",
+    "target_chain": "C",
+    "target_length": "48",
+    "target_structure": "/projects/p32572/Jieke/Projects/SCH-BinderDesign/data/benchmarks/targets/raw/rcsb/2JJS.cif",
+    "trigram_path": "trigram_seg.pkl"
+  },
+  "created_at_utc": "2026-05-13T06:55:30.286613+00:00",
+  "csv_path": "docs/results/phase0_boltz2_oracle_gradient_conflict_ad01783_20260513T065530Z_steps.csv",
+  "git": {
+    "branch": "baseline/phase0-mosaic-baselines",
+    "commit": "ad0178372a2261cc1322f3d028828f3c5ac63a9d",
+    "dirty": null,
+    "short_commit": "ad01783"
+  },
+  "json_path": "docs/results/phase0_boltz2_oracle_gradient_conflict_ad01783_20260513T065530Z.json",
+  "methods": [
+    {
+      "aux_slack": 0.02,
+      "cone_denominator": 8,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 1,
+      "method_id": "M3",
+      "min_primary_descent_ratio": 0.0,
+      "name": "naive_weighted",
+      "terminal_anneal_final_temperature": 1.0
+    },
+    {
+      "aux_slack": 0.02,
+      "cone_denominator": 8,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 1,
+      "method_id": "M4",
+      "min_primary_descent_ratio": 0.0,
+      "name": "normalized_weighted",
+      "terminal_anneal_final_temperature": 1.0
+    },
+    {
+      "aux_slack": 0.08,
+      "cone_denominator": 10,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 1,
+      "method_id": "M7c",
+      "min_primary_descent_ratio": 0.6,
+      "name": "contact_preserving_soft_cone",
+      "terminal_anneal_final_temperature": 1.0
+    },
+    {
+      "aux_slack": 0.08,
+      "cone_denominator": 10,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 0,
+      "method_id": "M8a",
+      "min_primary_descent_ratio": 0.6,
+      "name": "contact_qp_grid",
+      "terminal_anneal_final_temperature": 1.0
+    },
+    {
+      "aux_slack": 0.0,
+      "cone_denominator": 10,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 0,
+      "method_id": "M10a",
+      "min_primary_descent_ratio": 0.0,
+      "name": "balanced_zero_harm_cone",
+      "terminal_anneal_final_temperature": 1.0
+    },
+    {
+      "aux_slack": 0.02,
+      "cone_denominator": 8,
+      "hardening_max_fraction": 0.0,
+      "hardening_sample_count": 0,
+      "hardening_threshold": 0.0,
+      "max_aux_harms": 1,
+      "method_id": "M11a",
+      "min_primary_descent_ratio": 0.0,
+      "name": "pcgrad_normalized",
+      "terminal_anneal_final_temperature": 1.0
+    }
+  ],
+  "oracles": [
+    "protenix_contact",
+    "boltz2_distogram_contact",
+    "solubility_limit",
+    "charge_target",
+    "trigram_naturalness"
+  ],
+  "report_path": "docs/reports/phase0_boltz2_oracle_gradient_conflict_ad01783_20260513T065530Z.md",
+  "run_id": "phase0_boltz2_oracle_gradient_conflict_ad01783_20260513T065530Z",
+  "summary": [
+    {
+      "mean_boltz2_directional_derivative": -0.019079155288636684,
+      "mean_oracle_harm_rate": 0.0,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -0.3099435269832611,
+      "mean_step_norm": 0.11076153069734573,
+      "mean_worst_oracle_directional_derivative": -0.002775574626866728,
+      "method": "balanced_zero_harm_cone",
+      "method_id": "M10a",
+      "num_rows": 4
+    },
+    {
+      "mean_boltz2_directional_derivative": -0.08488289685919881,
+      "mean_oracle_harm_rate": 0.0,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -1.2942890226840973,
+      "mean_step_norm": 0.5042728260159492,
+      "mean_worst_oracle_directional_derivative": -0.013292800169438124,
+      "method": "normalized_weighted",
+      "method_id": "M4",
+      "num_rows": 4
+    },
+    {
+      "mean_boltz2_directional_derivative": -0.09983773250132799,
+      "mean_oracle_harm_rate": 0.0,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -1.4058781862258911,
+      "mean_step_norm": 0.570145845413208,
+      "mean_worst_oracle_directional_derivative": -0.013689155108295381,
+      "method": "pcgrad_normalized",
+      "method_id": "M11a",
+      "num_rows": 4
+    },
+    {
+      "mean_boltz2_directional_derivative": -0.09048195788636804,
+      "mean_oracle_harm_rate": 0.05,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -3.433729574084282,
+      "mean_step_norm": 0.7905387058854103,
+      "mean_worst_oracle_directional_derivative": 0.01353224955528276,
+      "method": "contact_preserving_soft_cone",
+      "method_id": "M7c",
+      "num_rows": 4
+    },
+    {
+      "mean_boltz2_directional_derivative": -0.06697502359747887,
+      "mean_oracle_harm_rate": 0.15000000000000002,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -4.238121032714844,
+      "mean_step_norm": 0.8951157778501511,
+      "mean_worst_oracle_directional_derivative": 0.03412365384428995,
+      "method": "naive_weighted",
+      "method_id": "M3",
+      "num_rows": 4
+    },
+    {
+      "mean_boltz2_directional_derivative": -0.04778287000954151,
+      "mean_oracle_harm_rate": 0.25,
+      "mean_protenix_boltz2_cosine": 0.08679685919208896,
+      "mean_protenix_directional_derivative": -4.231385171413422,
+      "mean_step_norm": 0.882592111825943,
+      "mean_worst_oracle_directional_derivative": 0.03628895099973306,
+      "method": "contact_qp_grid",
+      "method_id": "M8a",
+      "num_rows": 4
+    }
+  ]
+}
