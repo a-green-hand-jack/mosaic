@@ -35,6 +35,8 @@ in:
 - Add `M12a`, an active-constraint update rule that optimizes the primary
   contact oracle while only enforcing auxiliary losses whose current values
   exceed configured thresholds.
+- Add `M12b`/`M12c`/`M12d` threshold variants to test whether the `pdl1`
+  failure mode comes from activating the solubility constraint too early.
 
 ## Linked Claims And Risks
 
@@ -72,9 +74,9 @@ Park if the selection logic requires larger scorer refactoring than expected.
 
 ## Next Verification Step
 
-Sync this branch to Quest, pull into a matching remote worktree, and run the
-two-target EXP-C smoke with `METHOD_IDS=M3,M4,M12a`,
-`DEDUPLICATE_SCOPE=group`, and `MAX_BOLTZ2_CANDIDATES=18`. Local non-GPU checks
+Sync this branch to Quest, pull into a matching remote worktree, and run a
+two-target threshold sweep with `METHOD_IDS=M3,M12a,M12b,M12c,M12d`,
+`DEDUPLICATE_SCOPE=group`, and `MAX_BOLTZ2_CANDIDATES=30`. Local non-GPU checks
 already passed:
 
 - `bash -n jobs/launch_phase0_candidate_gate_parallel.sh`

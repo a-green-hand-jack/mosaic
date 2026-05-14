@@ -59,6 +59,39 @@ METHODS = [
         },
     ),
     MethodSpec(
+        "M12b",
+        "active_constraint_qp_grid",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.85,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.08,
+            "charge_target": 0.01,
+        },
+    ),
+    MethodSpec(
+        "M12c",
+        "active_constraint_qp_grid",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.90,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.12,
+            "charge_target": 0.01,
+        },
+    ),
+    MethodSpec(
+        "M12d",
+        "active_constraint_qp_grid",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.90,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 1.0,
+            "charge_target": 0.01,
+        },
+    ),
+    MethodSpec(
         "M7c",
         "contact_preserving_soft_cone",
         aux_slack=0.08,
