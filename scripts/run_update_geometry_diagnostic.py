@@ -21,7 +21,7 @@ import json
 import math
 import subprocess
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +157,7 @@ class MethodSpec:
     hardening_threshold: float = 0.0
     hardening_max_fraction: float = 0.0
     hardening_sample_count: int = 0
+    active_constraint_loss_thresholds: dict[str, float] = field(default_factory=dict)
 
 
 METHODS = [
@@ -164,6 +165,17 @@ METHODS = [
     MethodSpec("M3", "naive_weighted"),
     MethodSpec("M4", "normalized_weighted"),
     MethodSpec("M6", "soft_cone_correction"),
+    MethodSpec(
+        "M12a",
+        "active_constraint_qp_grid",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.75,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.04,
+            "charge_target": 0.01,
+        },
+    ),
 ]
 
 
@@ -203,6 +215,7 @@ def choose_raw_direction(
     *,
     x: jax.Array | None = None,
     step_size: float | None = None,
+    values: dict[str, float] | None = None,
 ) -> jax.Array:
     ordered = list(grads)
 
@@ -264,6 +277,21 @@ def choose_raw_direction(
                 if method.name == "contact_qp_grid_contact_first"
                 else "aux_first"
             ),
+        )
+
+    if method.name == "active_constraint_qp_grid":
+        if x is None or step_size is None:
+            raise ValueError("active_constraint_qp_grid needs x and step_size")
+        return choose_active_constraint_qp_grid_direction(
+            grads=grads,
+            weights=weights,
+            values=values or {},
+            x=x,
+            step_size=step_size,
+            aux_slack=method.aux_slack,
+            min_primary_descent_ratio=method.min_primary_descent_ratio,
+            cone_denominator=method.cone_denominator,
+            loss_thresholds=method.active_constraint_loss_thresholds,
         )
 
     if method.name == "balanced_zero_harm_cone":
@@ -535,6 +563,160 @@ def choose_contact_qp_grid_direction(
             item["worst_derivative"],
         ),
     )["raw"]
+
+
+def active_constraint_names(
+    *,
+    names: list[str],
+    values: dict[str, float],
+    loss_thresholds: dict[str, float],
+) -> list[str]:
+    """Return auxiliary objectives whose current loss violates a configured threshold."""
+    aux_names = names[1:]
+    if not loss_thresholds:
+        return aux_names
+    return [
+        name
+        for name in aux_names
+        if name in loss_thresholds and values.get(name, -float("inf")) > loss_thresholds[name]
+    ]
+
+
+def choose_active_constraint_qp_grid_direction(
+    *,
+    grads: dict[str, jax.Array],
+    weights: dict[str, float],
+    values: dict[str, float],
+    x: jax.Array,
+    step_size: float,
+    aux_slack: float = 0.02,
+    min_primary_descent_ratio: float = 0.0,
+    cone_denominator: int = 8,
+    loss_thresholds: dict[str, float] | None = None,
+) -> jax.Array:
+    """Primary-objective update with threshold-triggered auxiliary constraints.
+
+    This models the design setting where one oracle should be optimized while
+    auxiliary rewards only become constraints after violating user-level targets.
+    Inactive auxiliaries are logged but do not dilute the primary contact update.
+    """
+    names = list(grads)
+    primary = names[0]
+    loss_thresholds = loss_thresholds or {}
+    active_aux = active_constraint_names(
+        names=names,
+        values=values,
+        loss_thresholds=loss_thresholds,
+    )
+    active_names = [primary, *active_aux]
+    active_grads = {name: grads[name] for name in active_names}
+    active_weights = {name: weights[name] for name in active_names}
+    weight_total = sum(active_weights.values()) or 1.0
+    active_weights = {name: value / weight_total for name, value in active_weights.items()}
+
+    candidates = cone_candidates(
+        grads=active_grads,
+        weights=active_weights,
+        denominator=cone_denominator,
+    )
+    contact_raw = -normalized(grads[primary])
+    _, contact_update = projected_update(x, contact_raw, step_size)
+
+    evaluated = []
+    for raw in candidates:
+        _, actual_update = projected_update(x, raw, step_size)
+        derivatives = {name: flatten_dot(grads[name], actual_update) for name in names}
+        primary_derivative = derivatives[primary]
+        active_derivatives = [derivatives[name] for name in active_aux]
+        active_violation = sum(max(0.0, value - aux_slack) for value in active_derivatives)
+        inactive_harms = sum(
+            derivatives[name] > aux_slack
+            for name in names[1:]
+            if name not in active_aux
+        )
+        evaluated.append(
+            {
+                "raw": raw,
+                "primary_derivative": primary_derivative,
+                "active_violation": active_violation,
+                "active_worst": max(active_derivatives) if active_derivatives else 0.0,
+                "inactive_harms": inactive_harms,
+                "contact_distance": grad_norm(actual_update - contact_update),
+                "step_norm": grad_norm(actual_update),
+                "worst_derivative": max(derivatives.values()),
+                "total_harms": sum(value > 0 for value in derivatives.values()),
+            }
+        )
+
+    best_primary_derivative = min(item["primary_derivative"] for item in evaluated)
+    min_allowed_primary = min_primary_descent_ratio * best_primary_derivative
+    feasible = [
+        item
+        for item in evaluated
+        if item["primary_derivative"] < 0
+        and item["primary_derivative"] <= min_allowed_primary
+        and item["active_violation"] <= 1e-8
+    ]
+    if feasible:
+        return min(
+            feasible,
+            key=lambda item: (
+                item["contact_distance"],
+                item["active_worst"],
+                item["primary_derivative"],
+                -item["step_norm"],
+            ),
+        )["raw"]
+
+    return min(
+        evaluated,
+        key=lambda item: (
+            max(0.0, item["primary_derivative"] - min_allowed_primary),
+            item["active_violation"],
+            item["contact_distance"],
+            item["inactive_harms"],
+            item["total_harms"],
+            item["worst_derivative"],
+        ),
+    )["raw"]
+
+
+def active_constraint_qp_grid_diagnostics(
+    *,
+    method: MethodSpec,
+    grads: dict[str, jax.Array],
+    values: dict[str, float],
+    x: jax.Array,
+    actual_update: jax.Array,
+    step_size: float,
+) -> dict[str, float | str | bool]:
+    names = list(grads)
+    primary = names[0]
+    active_aux = active_constraint_names(
+        names=names,
+        values=values,
+        loss_thresholds=method.active_constraint_loss_thresholds,
+    )
+    derivatives = {name: flatten_dot(grad, actual_update) for name, grad in grads.items()}
+    active_derivatives = [derivatives[name] for name in active_aux]
+    active_violation = sum(max(0.0, value - method.aux_slack) for value in active_derivatives)
+    contact_raw = -normalized(grads[primary])
+    _, contact_update = projected_update(x, contact_raw, step_size)
+    thresholds = method.active_constraint_loss_thresholds
+    return {
+        "active_constraint_count": float(len(active_aux)),
+        "active_constraint_names": ",".join(active_aux),
+        "active_constraint_thresholds_json": json.dumps(thresholds, sort_keys=True),
+        "active_constraint_selected_active_violation": active_violation,
+        "active_constraint_selected_active_worst": (
+            max(active_derivatives) if active_derivatives else 0.0
+        ),
+        "active_constraint_selected_contact_distance": grad_norm(actual_update - contact_update),
+        "active_constraint_inactive_aux_harm_count": float(
+            sum(derivatives[name] > method.aux_slack for name in names[1:] if name not in active_aux)
+        ),
+        "active_constraint_primary_feasible": derivatives[primary] < 0,
+    }
 
 
 def evaluate_direction_candidate(
@@ -927,6 +1109,7 @@ def run_single_method_with_terminal(
             weights,
             x=x,
             step_size=step_size,
+            values=values,
         )
         x_projected, projected_update_value = projected_update(x, raw_direction, step_size)
         anneal_temperature = terminal_anneal_temperature(method, step, steps)
@@ -970,6 +1153,10 @@ def run_single_method_with_terminal(
             "method_hardening_threshold": method.hardening_threshold,
             "method_hardening_max_fraction": method.hardening_max_fraction,
             "method_hardening_sample_count": method.hardening_sample_count,
+            "method_active_constraint_loss_thresholds": json.dumps(
+                method.active_constraint_loss_thresholds,
+                sort_keys=True,
+            ),
             "seed": seed,
             "step": step,
             "terminal_anneal_temperature": anneal_temperature,
@@ -1014,6 +1201,17 @@ def run_single_method_with_terminal(
                     aux_slack=method.aux_slack,
                     max_harms=method.max_aux_harms,
                     cone_denominator=method.cone_denominator,
+                )
+            )
+        if method.name == "active_constraint_qp_grid":
+            row.update(
+                active_constraint_qp_grid_diagnostics(
+                    method=method,
+                    grads=grads,
+                    values=values,
+                    x=x,
+                    actual_update=actual_update,
+                    step_size=step_size,
                 )
             )
         rows.append(row)

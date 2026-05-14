@@ -48,6 +48,17 @@ METHODS = [
     MethodSpec("M3", "naive_weighted"),
     MethodSpec("M4", "normalized_weighted"),
     MethodSpec(
+        "M12a",
+        "active_constraint_qp_grid",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.75,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.04,
+            "charge_target": 0.01,
+        },
+    ),
+    MethodSpec(
         "M7c",
         "contact_preserving_soft_cone",
         aux_slack=0.08,
