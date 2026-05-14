@@ -53,6 +53,18 @@ METHODS = [
         },
     ),
     MethodSpec(
+        "M13a",
+        "active_constraint_contact_warmup",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.75,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.04,
+            "charge_target": 0.01,
+        },
+        contact_warmup_steps=1,
+    ),
+    MethodSpec(
         "M12b",
         "active_constraint_qp_grid",
         aux_slack=0.04,

@@ -158,6 +158,7 @@ class MethodSpec:
     hardening_max_fraction: float = 0.0
     hardening_sample_count: int = 0
     active_constraint_loss_thresholds: dict[str, float] = field(default_factory=dict)
+    contact_warmup_steps: int = 0
 
 
 METHODS = [
@@ -175,6 +176,18 @@ METHODS = [
             "solubility_limit": 0.04,
             "charge_target": 0.01,
         },
+    ),
+    MethodSpec(
+        "M13a",
+        "active_constraint_contact_warmup",
+        aux_slack=0.04,
+        min_primary_descent_ratio=0.75,
+        cone_denominator=10,
+        active_constraint_loss_thresholds={
+            "solubility_limit": 0.04,
+            "charge_target": 0.01,
+        },
+        contact_warmup_steps=1,
     ),
     MethodSpec(
         "M12b",
@@ -249,6 +262,7 @@ def choose_raw_direction(
     x: jax.Array | None = None,
     step_size: float | None = None,
     values: dict[str, float] | None = None,
+    step: int = 0,
 ) -> jax.Array:
     ordered = list(grads)
 
@@ -312,9 +326,15 @@ def choose_raw_direction(
             ),
         )
 
-    if method.name == "active_constraint_qp_grid":
+    if (
+        method.name == "active_constraint_contact_warmup"
+        and step < method.contact_warmup_steps
+    ):
+        return -normalized(grads[ordered[0]])
+
+    if method.name in {"active_constraint_qp_grid", "active_constraint_contact_warmup"}:
         if x is None or step_size is None:
-            raise ValueError("active_constraint_qp_grid needs x and step_size")
+            raise ValueError(f"{method.name} needs x and step_size")
         return choose_active_constraint_qp_grid_direction(
             grads=grads,
             weights=weights,
@@ -1143,6 +1163,7 @@ def run_single_method_with_terminal(
             x=x,
             step_size=step_size,
             values=values,
+            step=step,
         )
         x_projected, projected_update_value = projected_update(x, raw_direction, step_size)
         anneal_temperature = terminal_anneal_temperature(method, step, steps)
@@ -1186,6 +1207,15 @@ def run_single_method_with_terminal(
             "method_hardening_threshold": method.hardening_threshold,
             "method_hardening_max_fraction": method.hardening_max_fraction,
             "method_hardening_sample_count": method.hardening_sample_count,
+            "method_contact_warmup_steps": method.contact_warmup_steps,
+            "method_effective_update_rule": (
+                "contact_warmup"
+                if (
+                    method.name == "active_constraint_contact_warmup"
+                    and step < method.contact_warmup_steps
+                )
+                else method.name
+            ),
             "method_active_constraint_loss_thresholds": json.dumps(
                 method.active_constraint_loss_thresholds,
                 sort_keys=True,
@@ -1236,7 +1266,7 @@ def run_single_method_with_terminal(
                     cone_denominator=method.cone_denominator,
                 )
             )
-        if method.name == "active_constraint_qp_grid":
+        if method.name in {"active_constraint_qp_grid", "active_constraint_contact_warmup"}:
             row.update(
                 active_constraint_qp_grid_diagnostics(
                     method=method,
