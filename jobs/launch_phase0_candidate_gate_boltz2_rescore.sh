@@ -49,6 +49,16 @@ target_spec() {
     pd1) echo "${TARGET_ROOT}/4ZQK.cif|B|48" ;;
     cd47) echo "${TARGET_ROOT}/2JJS.cif|C|48" ;;
     il6) echo "${TARGET_ROOT}/1ALU.cif|A|48" ;;
+    1vpf_a) echo "${TARGET_ROOT}/1VPF.cif|A|48" ;;
+    1vpf_b) echo "${TARGET_ROOT}/1VPF.cif|B|48" ;;
+    1vpf_c) echo "${TARGET_ROOT}/1VPF.cif|C|48" ;;
+    1vpf_d) echo "${TARGET_ROOT}/1VPF.cif|D|48" ;;
+    2p4e_p) echo "${TARGET_ROOT}/2P4E.cif|P|48" ;;
+    2p4e_a) echo "${TARGET_ROOT}/2P4E.cif|A|48" ;;
+    7opb_a) echo "${TARGET_ROOT}/7OPB.cif|A|48" ;;
+    7opb_b) echo "${TARGET_ROOT}/7OPB.cif|B|48" ;;
+    7opb_c) echo "${TARGET_ROOT}/7OPB.cif|C|48" ;;
+    9ilb_a) echo "${TARGET_ROOT}/9ILB.cif|A|48" ;;
     *)
       echo "unknown target id: $1" >&2
       return 2
